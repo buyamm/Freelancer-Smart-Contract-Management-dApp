@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAccount, useContractRead } from 'wagmi';
 import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_STATES } from '../config/contract';
 import { formatEther } from 'viem';
@@ -33,6 +33,7 @@ export default function ClientDashboard() {
         functionName: 'getClientJobs',
         args: [address as `0x${string}`],
         enabled: !!address,
+        watch: true,
     });
 
     // Handle success - refresh data
@@ -55,6 +56,8 @@ export default function ClientDashboard() {
         return colors[state] || 'bg-gray-100 text-gray-800';
     };
 
+    const jobIdsList = (jobIds as bigint[]) || [];
+
     return (
         <div className="grid lg:grid-cols-3 gap-6">
             {/* Main Content */}
@@ -62,27 +65,18 @@ export default function ClientDashboard() {
                 <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-bold text-gray-900">💼 Dashboard Client</h2>
                     <span className="text-sm text-gray-500">
-                        {jobIds ? `${(jobIds as bigint[]).length} hợp đồng` : '0 hợp đồng'}
+                        {jobIdsList.length} hợp đồng
                     </span>
                 </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-3 gap-4">
-                    <StatCard
-                        title="Đang chờ"
-                        value={jobIds ? (jobIds as bigint[]).length : 0}
-                        icon="⏳"
-                        color="blue"
-                    />
-                    <StatCard title="Hoàn thành" value={0} icon="✅" color="green" />
-                    <StatCard title="Tranh chấp" value={0} icon="⚠️" color="red" />
-                </div>
+                {/* Stats - Calculated from jobs */}
+                <ClientStats jobIds={jobIdsList} refreshKey={refreshKey} />
 
                 {/* Job List */}
                 <div className="space-y-4">
                     <h3 className="text-lg font-semibold">📋 Hợp đồng của bạn</h3>
 
-                    {!jobIds || (jobIds as bigint[]).length === 0 ? (
+                    {jobIdsList.length === 0 ? (
                         <div className="text-center py-12 bg-gray-50 rounded-lg">
                             <div className="text-4xl mb-4">📝</div>
                             <p className="text-gray-600">Bạn chưa tạo hợp đồng nào</p>
@@ -92,9 +86,9 @@ export default function ClientDashboard() {
                         </div>
                     ) : (
                         <div className="grid gap-4">
-                            {(jobIds as bigint[]).map((jobId) => (
+                            {jobIdsList.map((jobId) => (
                                 <ClientJobCard
-                                    key={jobId.toString()}
+                                    key={`job-${jobId.toString()}-${refreshKey}`}
                                     jobId={jobId}
                                     onViewDetail={setSelectedJob}
                                     getStateColor={getStateColor}
@@ -133,18 +127,108 @@ export default function ClientDashboard() {
     );
 }
 
-function StatCard({ title, value, icon, color }: { title: string; value: number; icon: string; color: string }) {
+// Component tính stats từ jobs
+function ClientStats({ jobIds, refreshKey }: { jobIds: bigint[]; refreshKey: number }) {
+    const [stats, setStats] = useState({ pending: 0, inProgress: 0, completed: 0, totalSpent: BigInt(0) });
+    const [loadedJobs, setLoadedJobs] = useState<Map<string, Job>>(new Map());
+
+    // Reset khi jobIds thay đổi
+    useEffect(() => {
+        setLoadedJobs(new Map());
+    }, [jobIds.length, refreshKey]);
+
+    // Tính stats khi có đủ jobs
+    useEffect(() => {
+        if (loadedJobs.size === jobIds.length && jobIds.length > 0) {
+            let pending = 0, inProgress = 0, completed = 0, totalSpent = BigInt(0);
+
+            loadedJobs.forEach((job) => {
+                if (job.state === 1) pending++;
+                else if (job.state === 2 || job.state === 3) inProgress++;
+                else if (job.state === 4) {
+                    completed++;
+                    totalSpent += job.payment;
+                }
+            });
+
+            setStats({ pending, inProgress, completed, totalSpent });
+        }
+    }, [loadedJobs, jobIds.length]);
+
+    const handleJobLoaded = useCallback((jobId: string, job: Job) => {
+        setLoadedJobs(prev => {
+            const newMap = new Map(prev);
+            newMap.set(jobId, job);
+            return newMap;
+        });
+    }, []);
+
+    return (
+        <>
+            <div className="grid grid-cols-4 gap-4">
+                <StatCard title="Đang chờ" value={stats.pending} icon="⏳" color="blue" />
+                <StatCard title="Đang làm" value={stats.inProgress} icon="⚡" color="purple" />
+                <StatCard title="Hoàn thành" value={stats.completed} icon="✅" color="green" />
+                <StatCard
+                    title="Đã chi"
+                    value={`${Number(formatEther(stats.totalSpent)).toFixed(3)} ETH`}
+                    icon="💸"
+                    color="yellow"
+                    isText
+                />
+            </div>
+
+            {/* Hidden job fetchers */}
+            <div className="hidden">
+                {jobIds.map((jobId) => (
+                    <JobStatsFetcher
+                        key={`stats-${jobId.toString()}-${refreshKey}`}
+                        jobId={jobId}
+                        onJobLoaded={handleJobLoaded}
+                    />
+                ))}
+            </div>
+        </>
+    );
+}
+
+function JobStatsFetcher({ jobId, onJobLoaded }: { jobId: bigint; onJobLoaded: (id: string, job: Job) => void }) {
+    const { data: job } = useContractRead({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'getJob',
+        args: [jobId],
+        watch: true,
+    }) as { data: Job | undefined };
+
+    useEffect(() => {
+        if (job) {
+            onJobLoaded(jobId.toString(), job);
+        }
+    }, [job, jobId, onJobLoaded]);
+
+    return null;
+}
+
+function StatCard({ title, value, icon, color, isText = false }: {
+    title: string;
+    value: number | string;
+    icon: string;
+    color: string;
+    isText?: boolean;
+}) {
     const bgColors: Record<string, string> = {
         blue: 'bg-blue-50',
         green: 'bg-green-50',
-        red: 'bg-red-50',
+        purple: 'bg-purple-50',
+        yellow: 'bg-yellow-50',
     };
 
     return (
         <div className={`${bgColors[color]} p-4 rounded-lg`}>
             <div className="flex items-center justify-between">
                 <span className="text-2xl">{icon}</span>
-                <span className="text-2xl font-bold">{value}</span>
+                <span className={`${isText ? 'text-lg' : 'text-2xl'} font-bold`}>{value}</span>
             </div>
             <div className="text-sm text-gray-600 mt-1">{title}</div>
         </div>
@@ -165,6 +249,7 @@ function ClientJobCard({
         abi: CONTRACT_ABI,
         functionName: 'getJob',
         args: [jobId],
+        watch: true,
     }) as { data: Job | undefined };
 
     if (!job) return <div className="card animate-pulse h-32 bg-gray-200"></div>;
@@ -173,15 +258,21 @@ function ClientJobCard({
         return new Date(Number(timestamp) * 1000).toLocaleDateString('vi-VN');
     };
 
-    const needsAction = job.state === 3; // Submitted - cần duyệt
+    const needsAction = job.state === 3;
+    const isCompleted = job.state === 4;
 
     return (
-        <div className={`card hover:shadow-lg transition-shadow ${needsAction ? 'border-l-4 border-l-orange-500' : ''}`}>
+        <div className={`card hover:shadow-lg transition-shadow ${needsAction ? 'border-l-4 border-l-orange-500' :
+                isCompleted ? 'border-l-4 border-l-green-500' : ''
+            }`}>
             <div className="flex justify-between items-start mb-3">
                 <div>
                     <h3 className="text-lg font-semibold text-gray-900">{job.title}</h3>
                     {needsAction && (
                         <span className="text-xs text-orange-600 font-medium">⚡ Cần duyệt kết quả</span>
+                    )}
+                    {isCompleted && (
+                        <span className="text-xs text-green-600 font-medium">✅ Đã hoàn thành - Đã thanh toán {formatEther(job.payment)} ETH</span>
                     )}
                 </div>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStateColor(job.state)}`}>

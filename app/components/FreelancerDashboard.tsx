@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAccount, useContractRead } from 'wagmi';
 import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_STATES } from '../config/contract';
 import { formatEther } from 'viem';
@@ -33,22 +33,20 @@ export default function FreelancerDashboard() {
         functionName: 'getFreelancerJobs',
         args: [address as `0x${string}`],
         enabled: !!address,
+        watch: true,
     });
 
     const { data: jobCounter, refetch: refetchJobCounter } = useContractRead({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: CONTRACT_ABI,
         functionName: 'jobCounter',
+        watch: true,
     });
 
-    // Handle success - refresh data and switch tab
     const handleSuccess = useCallback(() => {
-        // Refresh all data
         refetchMyJobs();
         refetchJobCounter();
         setRefreshKey(prev => prev + 1);
-
-        // Switch to "My Jobs" tab
         setActiveTab('myJobs');
         setSelectedJob(null);
     }, [refetchMyJobs, refetchJobCounter]);
@@ -66,7 +64,7 @@ export default function FreelancerDashboard() {
         return colors[state] || 'bg-gray-100 text-gray-800';
     };
 
-    // Tạo array các job IDs để fetch available jobs
+    const myJobIdsList = (myJobIds as bigint[]) || [];
     const allJobIds = jobCounter ? Array.from({ length: Number(jobCounter) }, (_, i) => BigInt(i + 1)) : [];
 
     return (
@@ -76,20 +74,19 @@ export default function FreelancerDashboard() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-4 gap-4">
-                <StatCard title="Việc có sẵn" value={Number(jobCounter) || 0} icon="🔍" color="blue" />
-                <StatCard title="Đang làm" value={myJobIds ? (myJobIds as bigint[]).length : 0} icon="⚡" color="purple" />
-                <StatCard title="Hoàn thành" value={0} icon="✅" color="green" />
-                <StatCard title="Thu nhập" value="0 ETH" icon="💰" color="yellow" isText />
-            </div>
+            <FreelancerStats
+                jobIds={myJobIdsList}
+                totalAvailable={Number(jobCounter) || 0}
+                refreshKey={refreshKey}
+            />
 
             {/* Tabs */}
             <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg max-w-md">
                 <button
                     onClick={() => setActiveTab('available')}
                     className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'available'
-                        ? 'bg-white text-green-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
+                            ? 'bg-white text-green-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
                         }`}
                 >
                     🔍 Việc đang tuyển
@@ -97,11 +94,11 @@ export default function FreelancerDashboard() {
                 <button
                     onClick={() => setActiveTab('myJobs')}
                     className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'myJobs'
-                        ? 'bg-white text-green-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
+                            ? 'bg-white text-green-600 shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900'
                         }`}
                 >
-                    💼 Việc của tôi ({myJobIds ? (myJobIds as bigint[]).length : 0})
+                    💼 Việc của tôi ({myJobIdsList.length})
                 </button>
             </div>
 
@@ -113,13 +110,14 @@ export default function FreelancerDashboard() {
                             jobIds={allJobIds}
                             currentAddress={address || ''}
                             onViewDetail={setSelectedJob}
-                            getStateColor={getStateColor}
+                            refreshKey={refreshKey}
                         />
                     ) : (
                         <MyJobsList
-                            jobIds={(myJobIds as bigint[]) || []}
+                            jobIds={myJobIdsList}
                             onViewDetail={setSelectedJob}
                             getStateColor={getStateColor}
+                            refreshKey={refreshKey}
                         />
                     )}
                 </div>
@@ -136,24 +134,6 @@ export default function FreelancerDashboard() {
                             <li>Nộp IPFS hash để nhận thanh toán</li>
                         </ol>
                     </div>
-
-                    <div className="card">
-                        <h3 className="text-lg font-semibold mb-4">📊 Thống kê</h3>
-                        <div className="space-y-3 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">Tỷ lệ hoàn thành:</span>
-                                <span className="font-medium">N/A</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">Đánh giá:</span>
-                                <span className="font-medium">⭐ N/A</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-600">Tổng thu nhập:</span>
-                                <span className="font-medium text-green-600">0 ETH</span>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -167,6 +147,87 @@ export default function FreelancerDashboard() {
             )}
         </div>
     );
+}
+
+// Component tính stats
+function FreelancerStats({ jobIds, totalAvailable, refreshKey }: { jobIds: bigint[]; totalAvailable: number; refreshKey: number }) {
+    const [stats, setStats] = useState({ inProgress: 0, completed: 0, earnings: BigInt(0) });
+    const [loadedJobs, setLoadedJobs] = useState<Map<string, Job>>(new Map());
+
+    useEffect(() => {
+        setLoadedJobs(new Map());
+    }, [jobIds.length, refreshKey]);
+
+    useEffect(() => {
+        if (loadedJobs.size === jobIds.length && jobIds.length > 0) {
+            let inProgress = 0, completed = 0, earnings = BigInt(0);
+
+            loadedJobs.forEach((job) => {
+                if (job.state === 2 || job.state === 3) inProgress++;
+                else if (job.state === 4) {
+                    completed++;
+                    earnings += job.payment;
+                }
+            });
+
+            setStats({ inProgress, completed, earnings });
+        } else if (jobIds.length === 0) {
+            setStats({ inProgress: 0, completed: 0, earnings: BigInt(0) });
+        }
+    }, [loadedJobs, jobIds.length]);
+
+    const handleJobLoaded = useCallback((jobId: string, job: Job) => {
+        setLoadedJobs(prev => {
+            const newMap = new Map(prev);
+            newMap.set(jobId, job);
+            return newMap;
+        });
+    }, []);
+
+    return (
+        <>
+            <div className="grid grid-cols-4 gap-4">
+                <StatCard title="Việc có sẵn" value={totalAvailable} icon="🔍" color="blue" />
+                <StatCard title="Đang làm" value={stats.inProgress} icon="⚡" color="purple" />
+                <StatCard title="Hoàn thành" value={stats.completed} icon="✅" color="green" />
+                <StatCard
+                    title="Thu nhập"
+                    value={`${Number(formatEther(stats.earnings)).toFixed(3)} ETH`}
+                    icon="💰"
+                    color="yellow"
+                    isText
+                />
+            </div>
+
+            <div className="hidden">
+                {jobIds.map((jobId) => (
+                    <JobStatsFetcher
+                        key={`stats-${jobId.toString()}-${refreshKey}`}
+                        jobId={jobId}
+                        onJobLoaded={handleJobLoaded}
+                    />
+                ))}
+            </div>
+        </>
+    );
+}
+
+function JobStatsFetcher({ jobId, onJobLoaded }: { jobId: bigint; onJobLoaded: (id: string, job: Job) => void }) {
+    const { data: job } = useContractRead({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'getJob',
+        args: [jobId],
+        watch: true,
+    }) as { data: Job | undefined };
+
+    useEffect(() => {
+        if (job) {
+            onJobLoaded(jobId.toString(), job);
+        }
+    }, [job, jobId, onJobLoaded]);
+
+    return null;
 }
 
 function StatCard({ title, value, icon, color, isText = false }: {
@@ -198,12 +259,12 @@ function AvailableJobsList({
     jobIds,
     currentAddress,
     onViewDetail,
-    getStateColor,
+    refreshKey,
 }: {
     jobIds: bigint[];
     currentAddress: string;
     onViewDetail: (job: Job) => void;
-    getStateColor: (state: number) => string;
+    refreshKey: number;
 }) {
     if (jobIds.length === 0) {
         return (
@@ -216,28 +277,16 @@ function AvailableJobsList({
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h3 className="text-lg font-semibold">🔍 Việc đang tuyển</h3>
-                <span className="text-xs text-gray-500">
-                    Đang kiểm tra {jobIds.length} việc...
-                </span>
-            </div>
+            <h3 className="text-lg font-semibold">🔍 Việc đang tuyển</h3>
             <div className="grid gap-4">
                 {jobIds.map((jobId) => (
                     <AvailableJobCard
-                        key={jobId.toString()}
+                        key={`available-${jobId.toString()}-${refreshKey}`}
                         jobId={jobId}
                         currentAddress={currentAddress}
                         onViewDetail={onViewDetail}
                     />
                 ))}
-            </div>
-
-            {/* Debug info */}
-            <div className="text-xs text-gray-400 p-2 bg-gray-50 rounded">
-                💡 Lưu ý: Việc do chính bạn tạo (khi là Client) sẽ không hiển thị ở đây.
-                <br />
-                Địa chỉ của bạn: {currentAddress?.slice(0, 10)}...
             </div>
         </div>
     );
@@ -257,39 +306,15 @@ function AvailableJobCard({
         abi: CONTRACT_ABI,
         functionName: 'getJob',
         args: [jobId],
+        watch: true,
     }) as { data: Job | undefined; isLoading: boolean };
 
-    // Loading state
-    if (isLoading) {
-        return <div className="card animate-pulse h-24 bg-gray-100"></div>;
-    }
+    if (isLoading) return null;
+    if (!job) return null;
+    if (job.state !== 1) return null;
 
-    // Không có data
-    if (!job) {
-        return null;
-    }
-
-    // Job không ở trạng thái Funded (state = 1)
-    if (job.state !== 1) {
-        return null;
-    }
-
-    // Job của chính mình - hiển thị thông báo thay vì ẩn hoàn toàn
     const isOwnJob = job.client.toLowerCase() === currentAddress.toLowerCase();
-
-    if (isOwnJob) {
-        return (
-            <div className="card bg-gray-50 border-dashed border-2 border-gray-300 opacity-60">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-500">{job.title}</h3>
-                        <p className="text-sm text-gray-400">Việc này do bạn tạo (khi là Client)</p>
-                    </div>
-                    <span className="text-lg font-bold text-gray-400">{formatEther(job.payment)} ETH</span>
-                </div>
-            </div>
-        );
-    }
+    if (isOwnJob) return null;
 
     const formatDeadline = (timestamp: bigint) => {
         const date = new Date(Number(timestamp) * 1000);
@@ -333,10 +358,12 @@ function MyJobsList({
     jobIds,
     onViewDetail,
     getStateColor,
+    refreshKey,
 }: {
     jobIds: bigint[];
     onViewDetail: (job: Job) => void;
     getStateColor: (state: number) => string;
+    refreshKey: number;
 }) {
     if (jobIds.length === 0) {
         return (
@@ -354,7 +381,7 @@ function MyJobsList({
             <div className="grid gap-4">
                 {jobIds.map((jobId) => (
                     <MyJobCard
-                        key={jobId.toString()}
+                        key={`myjob-${jobId.toString()}-${refreshKey}`}
                         jobId={jobId}
                         onViewDetail={onViewDetail}
                         getStateColor={getStateColor}
@@ -379,19 +406,26 @@ function MyJobCard({
         abi: CONTRACT_ABI,
         functionName: 'getJob',
         args: [jobId],
+        watch: true,
     }) as { data: Job | undefined };
 
     if (!job) return <div className="card animate-pulse h-32 bg-gray-200"></div>;
 
-    const needsAction = job.state === 2; // InProgress - cần nộp kết quả
+    const needsAction = job.state === 2;
+    const isCompleted = job.state === 4;
 
     return (
-        <div className={`card hover:shadow-lg transition-shadow ${needsAction ? 'border-l-4 border-l-purple-500' : ''}`}>
+        <div className={`card hover:shadow-lg transition-shadow ${needsAction ? 'border-l-4 border-l-purple-500' :
+                isCompleted ? 'border-l-4 border-l-green-500' : ''
+            }`}>
             <div className="flex justify-between items-start mb-3">
                 <div>
                     <h3 className="text-lg font-semibold text-gray-900">{job.title}</h3>
                     {needsAction && (
                         <span className="text-xs text-purple-600 font-medium">⚡ Cần nộp kết quả</span>
+                    )}
+                    {isCompleted && (
+                        <span className="text-xs text-green-600 font-medium">✅ Đã hoàn thành - Đã nhận {formatEther(job.payment)} ETH</span>
                     )}
                 </div>
                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStateColor(job.state)}`}>
