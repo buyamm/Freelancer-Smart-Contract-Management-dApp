@@ -6,7 +6,6 @@ import WalletConnection from './components/WalletConnection';
 import RoleSelector, { UserRole, getRoleFromStorage } from './components/RoleSelector';
 import ClientDashboard from './components/ClientDashboard';
 import FreelancerDashboard from './components/FreelancerDashboard';
-import ArbiterDashboard from './components/ArbiterDashboard';
 
 export default function Home() {
     const { isConnected, address } = useAccount();
@@ -49,7 +48,7 @@ export default function Home() {
                         <p className="text-lg text-gray-600 mb-8">
                             Nền tảng quản lý hợp đồng freelancer an toàn và minh bạch trên blockchain
                         </p>
-                        <div className="grid md:grid-cols-3 gap-6 mb-8">
+                        <div className="grid md:grid-cols-2 gap-6 mb-8 max-w-2xl mx-auto">
                             <div className="card text-center">
                                 <div className="text-2xl mb-2">🔒</div>
                                 <h3 className="font-semibold mb-2">An toàn</h3>
@@ -62,13 +61,6 @@ export default function Home() {
                                 <h3 className="font-semibold mb-2">IPFS Storage</h3>
                                 <p className="text-sm text-gray-600">
                                     Lưu trữ kết quả công việc phi tập trung trên IPFS
-                                </p>
-                            </div>
-                            <div className="card text-center">
-                                <div className="text-2xl mb-2">⚖️</div>
-                                <h3 className="font-semibold mb-2">Trọng tài</h3>
-                                <p className="text-sm text-gray-600">
-                                    Hệ thống trọng tài giải quyết tranh chấp công bằng
                                 </p>
                             </div>
                         </div>
@@ -104,12 +96,10 @@ export default function Home() {
                     <div className="flex items-center space-x-2">
                         <span className="text-sm text-gray-600">Vai trò:</span>
                         <span className={`px-3 py-1 rounded-full text-sm font-medium ${userRole === 'client' ? 'bg-blue-100 text-blue-800' :
-                                userRole === 'freelancer' ? 'bg-green-100 text-green-800' :
-                                    'bg-purple-100 text-purple-800'
+                            'bg-green-100 text-green-800'
                             }`}>
                             {userRole === 'client' && '💼 Client'}
                             {userRole === 'freelancer' && '👨‍💻 Freelancer'}
-                            {userRole === 'arbiter' && '⚖️ Arbiter'}
                         </span>
                     </div>
                     <button
@@ -124,7 +114,6 @@ export default function Home() {
             <div className="container mx-auto px-4 py-6">
                 {userRole === 'client' && <ClientDashboard />}
                 {userRole === 'freelancer' && <FreelancerDashboard />}
-                {userRole === 'arbiter' && <ArbiterDashboard />}
             </div>
         </div>
     );

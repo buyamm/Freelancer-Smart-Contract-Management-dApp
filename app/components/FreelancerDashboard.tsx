@@ -5,12 +5,12 @@ import { useAccount, useContractRead } from 'wagmi';
 import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_STATES } from '../config/contract';
 import { formatEther } from 'viem';
 import JobDetailModal from './JobDetailModal';
+import UpdateContactInfo from './UpdateContactInfo';
 
 interface Job {
     id: bigint;
     client: string;
     freelancer: string;
-    arbiter: string;
     title: string;
     description: string;
     payment: bigint;
@@ -19,6 +19,8 @@ interface Job {
     ipfsHash: string;
     createdAt: bigint;
     submittedAt: bigint;
+    rejectionCount: bigint;
+    penaltyAmount: bigint;
 }
 
 export default function FreelancerDashboard() {
@@ -85,8 +87,8 @@ export default function FreelancerDashboard() {
                 <button
                     onClick={() => setActiveTab('available')}
                     className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'available'
-                            ? 'bg-white text-green-600 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
+                        ? 'bg-white text-green-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
                         }`}
                 >
                     🔍 Việc đang tuyển
@@ -94,8 +96,8 @@ export default function FreelancerDashboard() {
                 <button
                     onClick={() => setActiveTab('myJobs')}
                     className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'myJobs'
-                            ? 'bg-white text-green-600 shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900'
+                        ? 'bg-white text-green-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
                         }`}
                 >
                     💼 Việc của tôi ({myJobIdsList.length})
@@ -124,14 +126,17 @@ export default function FreelancerDashboard() {
 
                 {/* Sidebar */}
                 <div className="space-y-6">
+                    <UpdateContactInfo />
+
                     <div className="card bg-green-50 border-green-200">
                         <h3 className="text-lg font-semibold mb-4 text-green-900">💡 Hướng dẫn Freelancer</h3>
                         <ol className="text-sm text-green-800 space-y-2 list-decimal list-inside">
+                            <li>Cập nhật thông tin liên lạc</li>
                             <li>Duyệt việc đang tuyển phù hợp</li>
                             <li>Click "Nhận việc" để bắt đầu</li>
-                            <li>Hoàn thành công việc đúng deadline</li>
+                            <li>Hoàn thành công việc ĐÚNG deadline</li>
                             <li>Upload kết quả lên IPFS</li>
-                            <li>Nộp IPFS hash để nhận thanh toán</li>
+                            <li>Nộp muộn sẽ bị phạt 10%</li>
                         </ol>
                     </div>
                 </div>
@@ -161,8 +166,12 @@ function FreelancerStats({ jobIds, totalAvailable, refreshKey }: { jobIds: bigin
     useEffect(() => {
         if (loadedJobs.size === jobIds.length && jobIds.length > 0) {
             let inProgress = 0, completed = 0, earnings = BigInt(0);
+            const isZeroAddress = (addr: string) => addr === '0x0000000000000000000000000000000000000000';
 
             loadedJobs.forEach((job) => {
+                // Bỏ qua job nếu freelancer đã bị xóa
+                if (isZeroAddress(job.freelancer)) return;
+
                 if (job.state === 2 || job.state === 3) inProgress++;
                 else if (job.state === 4) {
                     completed++;
@@ -411,12 +420,18 @@ function MyJobCard({
 
     if (!job) return <div className="card animate-pulse h-32 bg-gray-200"></div>;
 
+    // Không hiển thị nếu freelancer đã bị xóa (zero address)
+    const isZeroAddress = (addr: string) => addr === '0x0000000000000000000000000000000000000000';
+    if (isZeroAddress(job.freelancer)) {
+        return null; // Không hiển thị job này
+    }
+
     const needsAction = job.state === 2;
     const isCompleted = job.state === 4;
 
     return (
         <div className={`card hover:shadow-lg transition-shadow ${needsAction ? 'border-l-4 border-l-purple-500' :
-                isCompleted ? 'border-l-4 border-l-green-500' : ''
+            isCompleted ? 'border-l-4 border-l-green-500' : ''
             }`}>
             <div className="flex justify-between items-start mb-3">
                 <div>

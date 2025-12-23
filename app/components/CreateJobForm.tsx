@@ -3,9 +3,8 @@
 import { useState } from 'react';
 import { useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contract';
-import { parseEther, isAddress } from 'viem';
+import { parseEther } from 'viem';
 import NetworkChecker from './NetworkChecker';
-import ArbiterSelector from './ArbiterSelector';
 
 export default function CreateJobForm() {
     const { isConnected } = useAccount();
@@ -14,9 +13,13 @@ export default function CreateJobForm() {
         description: '',
         payment: '',
         deadline: '',
-        arbiter: ''
+        contactName: '',
+        contactEmail: '',
+        contactPhone: '',
+        contactChat: ''
     });
     const [isOpen, setIsOpen] = useState(false);
+    const [showContactForm, setShowContactForm] = useState(false);
 
     const deadlineTimestamp = formData.deadline ?
         Math.floor(new Date(formData.deadline).getTime() / 1000) : 0;
@@ -28,8 +31,6 @@ export default function CreateJobForm() {
         formData.payment &&
         parseFloat(formData.payment) > 0 &&
         formData.deadline &&
-        formData.arbiter &&
-        isAddress(formData.arbiter) &&
         deadlineTimestamp > Date.now() / 1000 &&
         CONTRACT_ADDRESS &&
         isConnected
@@ -42,8 +43,7 @@ export default function CreateJobForm() {
         args: [
             formData.title,
             formData.description,
-            BigInt(deadlineTimestamp),
-            formData.arbiter as `0x${string}`
+            BigInt(deadlineTimestamp)
         ],
         value: formData.payment ? parseEther(formData.payment) : undefined,
         enabled: isFormValid
@@ -55,8 +55,33 @@ export default function CreateJobForm() {
         hash: data?.hash,
     });
 
-    const handleSubmit = (e: React.FormEvent) => {
+    // Update contact info
+    const { config: contactConfig } = usePrepareContractWrite({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'updateContactInfo',
+        args: [
+            formData.contactName,
+            formData.contactEmail,
+            formData.contactPhone,
+            formData.contactChat
+        ],
+        enabled: isConnected && (formData.contactName || formData.contactEmail || formData.contactPhone || formData.contactChat)
+    });
+
+    const { write: writeContact } = useContractWrite(contactConfig);
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Update contact info first if provided
+        if (writeContact && (formData.contactName || formData.contactEmail || formData.contactPhone || formData.contactChat)) {
+            writeContact();
+            // Wait a bit for contact info to be updated
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        // Then create job
         if (write) {
             write();
         }
@@ -87,7 +112,10 @@ export default function CreateJobForm() {
                                 description: '',
                                 payment: '',
                                 deadline: '',
-                                arbiter: ''
+                                contactName: '',
+                                contactEmail: '',
+                                contactPhone: '',
+                                contactChat: ''
                             });
                         }}
                         className="btn-primary"
@@ -189,10 +217,74 @@ export default function CreateJobForm() {
                     </div>
                 </div>
 
-                <ArbiterSelector
-                    value={formData.arbiter}
-                    onChange={(address) => setFormData({ ...formData, arbiter: address })}
-                />
+                {/* Contact Information Section */}
+                <div className="border-t pt-4">
+                    <button
+                        type="button"
+                        onClick={() => setShowContactForm(!showContactForm)}
+                        className="flex items-center text-sm text-blue-600 hover:text-blue-700 mb-2"
+                    >
+                        <span className="mr-2">{showContactForm ? '▼' : '▶'}</span>
+                        Thông tin liên lạc (tùy chọn)
+                    </button>
+
+                    {showContactForm && (
+                        <div className="space-y-3 bg-gray-50 p-4 rounded">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Tên
+                                </label>
+                                <input
+                                    type="text"
+                                    name="contactName"
+                                    value={formData.contactName}
+                                    onChange={handleInputChange}
+                                    className="input"
+                                    placeholder="Nguyễn Văn A"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Email
+                                </label>
+                                <input
+                                    type="email"
+                                    name="contactEmail"
+                                    value={formData.contactEmail}
+                                    onChange={handleInputChange}
+                                    className="input"
+                                    placeholder="email@example.com"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Số điện thoại
+                                </label>
+                                <input
+                                    type="tel"
+                                    name="contactPhone"
+                                    value={formData.contactPhone}
+                                    onChange={handleInputChange}
+                                    className="input"
+                                    placeholder="+84 xxx xxx xxx"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Link chat (Telegram, Discord, etc.)
+                                </label>
+                                <input
+                                    type="url"
+                                    name="contactChat"
+                                    value={formData.contactChat}
+                                    onChange={handleInputChange}
+                                    className="input"
+                                    placeholder="https://t.me/username"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
 
                 {/* Debug info - chỉ hiện khi development */}
                 {process.env.NODE_ENV === 'development' && (

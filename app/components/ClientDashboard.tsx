@@ -6,12 +6,12 @@ import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_STATES } from '../config/contr
 import { formatEther } from 'viem';
 import CreateJobForm from './CreateJobForm';
 import JobDetailModal from './JobDetailModal';
+import UpdateContactInfo from './UpdateContactInfo';
 
 interface Job {
     id: bigint;
     client: string;
     freelancer: string;
-    arbiter: string;
     title: string;
     description: string;
     payment: bigint;
@@ -20,6 +20,8 @@ interface Job {
     ipfsHash: string;
     createdAt: bigint;
     submittedAt: bigint;
+    rejectionCount: bigint;
+    penaltyAmount: bigint;
 }
 
 export default function ClientDashboard() {
@@ -103,14 +105,17 @@ export default function ClientDashboard() {
             <div className="space-y-6">
                 <CreateJobForm />
 
+                <UpdateContactInfo />
+
                 <div className="card bg-blue-50 border-blue-200">
                     <h3 className="text-lg font-semibold mb-4 text-blue-900">💡 Hướng dẫn Client</h3>
                     <ol className="text-sm text-blue-800 space-y-2 list-decimal list-inside">
+                        <li>Cập nhật thông tin liên lạc</li>
                         <li>Tạo hợp đồng với mô tả chi tiết</li>
                         <li>Đặt cọc ETH vào smart contract</li>
                         <li>Chờ freelancer nhận việc</li>
-                        <li>Duyệt kết quả khi hoàn thành</li>
-                        <li>Tiền tự động chuyển cho freelancer</li>
+                        <li>Duyệt/Từ chối kết quả khi hoàn thành</li>
+                        <li>Có thể gia hạn deadline nếu cần</li>
                     </ol>
                 </div>
             </div>
@@ -263,7 +268,7 @@ function ClientJobCard({
 
     return (
         <div className={`card hover:shadow-lg transition-shadow ${needsAction ? 'border-l-4 border-l-orange-500' :
-                isCompleted ? 'border-l-4 border-l-green-500' : ''
+            isCompleted ? 'border-l-4 border-l-green-500' : ''
             }`}>
             <div className="flex justify-between items-start mb-3">
                 <div>

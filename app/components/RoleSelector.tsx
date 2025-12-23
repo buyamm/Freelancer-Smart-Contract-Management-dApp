@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 
-export type UserRole = 'client' | 'freelancer' | 'arbiter' | null;
+export type UserRole = 'client' | 'freelancer' | null;
 
 interface RoleSelectorProps {
     onRoleSelect: (role: UserRole) => void;
@@ -39,6 +38,7 @@ export default function RoleSelector({ onRoleSelect, currentRole }: RoleSelector
                 'Đăng công việc và đặt cọc ETH',
                 'Chọn freelancer phù hợp',
                 'Duyệt và thanh toán kết quả',
+                'Liên lạc trực tiếp với freelancer',
             ],
             color: 'blue',
         },
@@ -51,20 +51,9 @@ export default function RoleSelector({ onRoleSelect, currentRole }: RoleSelector
                 'Xem và nhận công việc phù hợp',
                 'Nộp kết quả qua IPFS',
                 'Nhận thanh toán tự động',
+                'Liên lạc trực tiếp với client',
             ],
             color: 'green',
-        },
-        {
-            id: 'arbiter' as const,
-            title: 'Arbiter',
-            icon: '⚖️',
-            description: 'Tôi muốn làm trọng tài giải quyết tranh chấp',
-            features: [
-                'Giải quyết tranh chấp công bằng',
-                'Nhận 5% phí trọng tài',
-                'Xây dựng uy tín trên blockchain',
-            ],
-            color: 'purple',
         },
     ];
 
@@ -108,44 +97,43 @@ export default function RoleSelector({ onRoleSelect, currentRole }: RoleSelector
                 </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-6">
-                {roles.map((role) => {
-                    const isSelected = currentRole === role.id;
-                    const colors = getColorClasses(role.color, isSelected);
+            <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">{roles.map((role) => {
+                const isSelected = currentRole === role.id;
+                const colors = getColorClasses(role.color, isSelected);
 
-                    return (
-                        <div
-                            key={role.id}
-                            onClick={() => handleSelectRole(role.id)}
-                            className={`
+                return (
+                    <div
+                        key={role.id}
+                        onClick={() => handleSelectRole(role.id)}
+                        className={`
                                 ${colors.bg} ${colors.border} ${colors.hover}
                                 border-2 rounded-xl p-6 cursor-pointer transition-all
                                 transform hover:scale-105 hover:shadow-lg
                             `}
-                        >
-                            <div className="text-center mb-4">
-                                <div className="text-4xl mb-3">{role.icon}</div>
-                                <h3 className={`text-xl font-bold ${colors.text}`}>{role.title}</h3>
-                                <p className="text-gray-600 text-sm mt-1">{role.description}</p>
-                            </div>
-
-                            <ul className="space-y-2 text-sm">
-                                {role.features.map((feature, idx) => (
-                                    <li key={idx} className="flex items-start">
-                                        <span className={`mr-2 ${colors.text}`}>✓</span>
-                                        <span className="text-gray-700">{feature}</span>
-                                    </li>
-                                ))}
-                            </ul>
-
-                            {isSelected && (
-                                <div className={`mt-4 text-center ${colors.text} font-semibold`}>
-                                    ✅ Đã chọn
-                                </div>
-                            )}
+                    >
+                        <div className="text-center mb-4">
+                            <div className="text-4xl mb-3">{role.icon}</div>
+                            <h3 className={`text-xl font-bold ${colors.text}`}>{role.title}</h3>
+                            <p className="text-gray-600 text-sm mt-1">{role.description}</p>
                         </div>
-                    );
-                })}
+
+                        <ul className="space-y-2 text-sm">
+                            {role.features.map((feature, idx) => (
+                                <li key={idx} className="flex items-start">
+                                    <span className={`mr-2 ${colors.text}`}>✓</span>
+                                    <span className="text-gray-700">{feature}</span>
+                                </li>
+                            ))}
+                        </ul>
+
+                        {isSelected && (
+                            <div className={`mt-4 text-center ${colors.text} font-semibold`}>
+                                ✅ Đã chọn
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
             </div>
 
             {currentRole && (

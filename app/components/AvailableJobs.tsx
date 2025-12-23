@@ -10,7 +10,6 @@ interface Job {
     id: bigint;
     client: string;
     freelancer: string;
-    arbiter: string;
     title: string;
     description: string;
     payment: bigint;
@@ -19,6 +18,8 @@ interface Job {
     ipfsHash: string;
     createdAt: bigint;
     submittedAt: bigint;
+    rejectionCount: bigint;
+    penaltyAmount: bigint;
 }
 
 export default function AvailableJobs() {

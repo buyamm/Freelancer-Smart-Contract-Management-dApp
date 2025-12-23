@@ -10,7 +10,6 @@ interface Job {
     id: bigint;
     client: string;
     freelancer: string;
-    arbiter: string;
     title: string;
     description: string;
     payment: bigint;
@@ -19,10 +18,12 @@ interface Job {
     ipfsHash: string;
     createdAt: bigint;
     submittedAt: bigint;
+    rejectionCount: bigint;
+    penaltyAmount: bigint;
 }
 
 interface JobListProps {
-    userRole: 'client' | 'freelancer' | 'arbiter';
+    userRole: 'client' | 'freelancer';
 }
 
 export default function JobList({ userRole }: JobListProps) {
@@ -32,9 +33,7 @@ export default function JobList({ userRole }: JobListProps) {
     const { data: jobIds } = useContractRead({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: CONTRACT_ABI,
-        functionName: userRole === 'client' ? 'getClientJobs' :
-            userRole === 'freelancer' ? 'getFreelancerJobs' :
-                'getArbiterJobs',
+        functionName: userRole === 'client' ? 'getClientJobs' : 'getFreelancerJobs',
         args: [address as `0x${string}`],
         enabled: !!address,
     });
@@ -53,17 +52,14 @@ export default function JobList({ userRole }: JobListProps) {
                 <div className="text-4xl mb-4">
                     {userRole === 'client' && '📝'}
                     {userRole === 'freelancer' && '💼'}
-                    {userRole === 'arbiter' && '⚖️'}
                 </div>
                 <p className="text-gray-600">
                     {userRole === 'client' && 'Bạn chưa tạo hợp đồng nào'}
                     {userRole === 'freelancer' && 'Bạn chưa nhận hợp đồng nào'}
-                    {userRole === 'arbiter' && 'Chưa có hợp đồng tranh chấp nào'}
                 </p>
                 <p className="text-sm text-gray-500 mt-2">
                     {userRole === 'client' && 'Tạo hợp đồng mới để bắt đầu'}
                     {userRole === 'freelancer' && 'Xem việc có sẵn để nhận việc'}
-                    {userRole === 'arbiter' && 'Bạn sẽ được thông báo khi có tranh chấp'}
                 </p>
             </div>
         );
@@ -75,7 +71,6 @@ export default function JobList({ userRole }: JobListProps) {
                 <h2 className="text-xl font-semibold">
                     {userRole === 'client' && '📋 Hợp đồng đã tạo'}
                     {userRole === 'freelancer' && '💼 Hợp đồng đang thực hiện'}
-                    {userRole === 'arbiter' && '⚖️ Hợp đồng cần giải quyết'}
                 </h2>
                 <span className="text-sm text-gray-500">
                     {(jobIds as bigint[]).length} hợp đồng
