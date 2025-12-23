@@ -1,14 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import WalletConnection from './components/WalletConnection';
-import JobList from './components/JobList';
-import CreateJobForm from './components/CreateJobForm';
+import RoleSelector, { UserRole, getRoleFromStorage } from './components/RoleSelector';
+import ClientDashboard from './components/ClientDashboard';
+import FreelancerDashboard from './components/FreelancerDashboard';
+import ArbiterDashboard from './components/ArbiterDashboard';
 
 export default function Home() {
-    const { isConnected } = useAccount();
-    const [activeTab, setActiveTab] = useState<'client' | 'freelancer' | 'arbiter'>('client');
+    const { isConnected, address } = useAccount();
+    const [userRole, setUserRole] = useState<UserRole>(null);
+    const [mounted, setMounted] = useState(false);
+
+    // Load role từ localStorage khi component mount
+    useEffect(() => {
+        setMounted(true);
+        if (address) {
+            const savedRole = getRoleFromStorage(address);
+            setUserRole(savedRole);
+        }
+    }, [address]);
+
+    // Reset role khi disconnect
+    useEffect(() => {
+        if (!isConnected) {
+            setUserRole(null);
+        }
+    }, [isConnected]);
+
+    if (!mounted) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            </div>
+        );
+    }
 
     if (!isConnected) {
         return (
@@ -54,96 +81,50 @@ export default function Home() {
         );
     }
 
+    // Nếu chưa chọn role, hiển thị RoleSelector
+    if (!userRole) {
+        return (
+            <div>
+                <WalletConnection />
+                <div className="container mx-auto px-4 py-8">
+                    <RoleSelector onRoleSelect={setUserRole} currentRole={userRole} />
+                </div>
+            </div>
+        );
+    }
+
+    // Hiển thị Dashboard theo role
     return (
         <div>
             <WalletConnection />
 
+            {/* Role Badge */}
+            <div className="bg-gray-100 border-b">
+                <div className="container mx-auto px-4 py-2 flex justify-between items-center">
+                    <div className="flex items-center space-x-2">
+                        <span className="text-sm text-gray-600">Vai trò:</span>
+                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${userRole === 'client' ? 'bg-blue-100 text-blue-800' :
+                                userRole === 'freelancer' ? 'bg-green-100 text-green-800' :
+                                    'bg-purple-100 text-purple-800'
+                            }`}>
+                            {userRole === 'client' && '💼 Client'}
+                            {userRole === 'freelancer' && '👨‍💻 Freelancer'}
+                            {userRole === 'arbiter' && '⚖️ Arbiter'}
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setUserRole(null)}
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                        Đổi vai trò
+                    </button>
+                </div>
+            </div>
+
             <div className="container mx-auto px-4 py-6">
-                {/* Tab Navigation */}
-                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6 max-w-md">
-                    <button
-                        onClick={() => setActiveTab('client')}
-                        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'client'
-                                ? 'bg-white text-primary-600 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                            }`}
-                    >
-                        Client
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('freelancer')}
-                        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'freelancer'
-                                ? 'bg-white text-primary-600 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                            }`}
-                    >
-                        Freelancer
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('arbiter')}
-                        className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${activeTab === 'arbiter'
-                                ? 'bg-white text-primary-600 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                            }`}
-                    >
-                        Arbiter
-                    </button>
-                </div>
-
-                <div className="grid lg:grid-cols-3 gap-6">
-                    {/* Main Content */}
-                    <div className="lg:col-span-2">
-                        <JobList userRole={activeTab} />
-                    </div>
-
-                    {/* Sidebar */}
-                    <div className="space-y-6">
-                        {activeTab === 'client' && <CreateJobForm />}
-
-                        {activeTab === 'freelancer' && (
-                            <div className="card">
-                                <h3 className="text-lg font-semibold mb-4">Tìm việc mới</h3>
-                                <p className="text-gray-600 mb-4">
-                                    Duyệt qua các hợp đồng đang mở để tìm công việc phù hợp
-                                </p>
-                                <button className="btn-primary w-full">
-                                    Xem việc có sẵn
-                                </button>
-                            </div>
-                        )}
-
-                        {activeTab === 'arbiter' && (
-                            <div className="card">
-                                <h3 className="text-lg font-semibold mb-4">Vai trò Arbiter</h3>
-                                <p className="text-gray-600 mb-4">
-                                    Bạn được chỉ định làm trọng tài để giải quyết tranh chấp
-                                </p>
-                                <div className="text-sm text-gray-500">
-                                    Phí trọng tài: 5% tổng giá trị hợp đồng
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Stats Card */}
-                        <div className="card">
-                            <h3 className="text-lg font-semibold mb-4">Thống kê</h3>
-                            <div className="space-y-3">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Hợp đồng hoàn thành:</span>
-                                    <span className="font-medium">0</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Tổng thu nhập:</span>
-                                    <span className="font-medium">0 ETH</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Đánh giá:</span>
-                                    <span className="font-medium">⭐ N/A</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                {userRole === 'client' && <ClientDashboard />}
+                {userRole === 'freelancer' && <FreelancerDashboard />}
+                {userRole === 'arbiter' && <ArbiterDashboard />}
             </div>
         </div>
     );

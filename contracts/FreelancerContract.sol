@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract FreelancerContract is ReentrancyGuard, Ownable {
@@ -67,7 +67,7 @@ contract FreelancerContract is ReentrancyGuard, Ownable {
         _;
     }
 
-    constructor() {}
+    constructor() Ownable(msg.sender) {}
 
     function createJob(
         string memory _title,

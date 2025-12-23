@@ -2,10 +2,31 @@
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useNetwork } from 'wagmi';
+import { useState, useEffect } from 'react';
 
 export default function WalletConnection() {
     const { address, isConnected } = useAccount();
     const { chain } = useNetwork();
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    if (!mounted) {
+        return (
+            <div className="flex items-center justify-between p-4 bg-white shadow-sm border-b">
+                <div className="flex items-center space-x-4">
+                    <h1 className="text-xl font-bold text-gray-900">
+                        Freelancer Smart Contract dApp
+                    </h1>
+                </div>
+                <div className="flex items-center space-x-4">
+                    <div className="w-32 h-10 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex items-center justify-between p-4 bg-white shadow-sm border-b">

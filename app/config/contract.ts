@@ -1,34 +1,723 @@
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS || '';
 
 export const CONTRACT_ABI = [
-    // Events
-    "event ContractCreated(uint256 indexed jobId, address indexed client, string title, uint256 payment)",
-    "event ContractFunded(uint256 indexed jobId, address indexed client, uint256 amount)",
-    "event ContractAccepted(uint256 indexed jobId, address indexed freelancer)",
-    "event ContractSubmitted(uint256 indexed jobId, string ipfsHash)",
-    "event ContractApproved(uint256 indexed jobId, address indexed client)",
-    "event ContractCanceled(uint256 indexed jobId, string reason)",
-    "event DisputeOpened(uint256 indexed jobId, address indexed opener)",
-    "event DisputeResolved(uint256 indexed jobId, address indexed arbiter, uint256 clientAmount, uint256 freelancerAmount)",
-
-    // Read functions
-    "function jobs(uint256) view returns (uint256 id, address client, address freelancer, address arbiter, string title, string description, uint256 payment, uint256 deadline, uint8 state, string ipfsHash, uint256 createdAt, uint256 submittedAt)",
-    "function getJob(uint256 _jobId) view returns (tuple(uint256 id, address client, address freelancer, address arbiter, string title, string description, uint256 payment, uint256 deadline, uint8 state, string ipfsHash, uint256 createdAt, uint256 submittedAt))",
-    "function getClientJobs(address _client) view returns (uint256[])",
-    "function getFreelancerJobs(address _freelancer) view returns (uint256[])",
-    "function getArbiterJobs(address _arbiter) view returns (uint256[])",
-    "function isDeadlinePassed(uint256 _jobId) view returns (bool)",
-    "function jobCounter() view returns (uint256)",
-
-    // Write functions
-    "function createJob(string _title, string _description, uint256 _deadline, address _arbiter) payable",
-    "function acceptJob(uint256 _jobId)",
-    "function submitWork(uint256 _jobId, string _ipfsHash)",
-    "function approveWork(uint256 _jobId)",
-    "function cancelJob(uint256 _jobId, string _reason)",
-    "function openDispute(uint256 _jobId)",
-    "function resolveDispute(uint256 _jobId, uint256 _clientPercentage)"
-];
+  {
+    "inputs": [],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "freelancer",
+        "type": "address"
+      }
+    ],
+    "name": "ContractAccepted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "client",
+        "type": "address"
+      }
+    ],
+    "name": "ContractApproved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "reason",
+        "type": "string"
+      }
+    ],
+    "name": "ContractCanceled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "client",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "payment",
+        "type": "uint256"
+      }
+    ],
+    "name": "ContractCreated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "client",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "name": "ContractFunded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "ipfsHash",
+        "type": "string"
+      }
+    ],
+    "name": "ContractSubmitted",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "opener",
+        "type": "address"
+      }
+    ],
+    "name": "DisputeOpened",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "jobId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "arbiter",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "clientAmount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "freelancerAmount",
+        "type": "uint256"
+      }
+    ],
+    "name": "DisputeResolved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "ARBITER_FEE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      }
+    ],
+    "name": "acceptJob",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      }
+    ],
+    "name": "approveWork",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "arbiterJobs",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "_reason",
+        "type": "string"
+      }
+    ],
+    "name": "cancelJob",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "clientJobs",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "_title",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "_description",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_deadline",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "_arbiter",
+        "type": "address"
+      }
+    ],
+    "name": "createJob",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "freelancerJobs",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_arbiter",
+        "type": "address"
+      }
+    ],
+    "name": "getArbiterJobs",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_client",
+        "type": "address"
+      }
+    ],
+    "name": "getClientJobs",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_freelancer",
+        "type": "address"
+      }
+    ],
+    "name": "getFreelancerJobs",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getJob",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "id",
+            "type": "uint256"
+          },
+          {
+            "internalType": "address",
+            "name": "client",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "freelancer",
+            "type": "address"
+          },
+          {
+            "internalType": "address",
+            "name": "arbiter",
+            "type": "address"
+          },
+          {
+            "internalType": "string",
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "description",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "payment",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "deadline",
+            "type": "uint256"
+          },
+          {
+            "internalType": "enum FreelancerContract.ContractState",
+            "name": "state",
+            "type": "uint8"
+          },
+          {
+            "internalType": "string",
+            "name": "ipfsHash",
+            "type": "string"
+          },
+          {
+            "internalType": "uint256",
+            "name": "createdAt",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "submittedAt",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct FreelancerContract.Job",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      }
+    ],
+    "name": "isDeadlinePassed",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "jobCounter",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "jobs",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "client",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "freelancer",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "arbiter",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "title",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "description",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "payment",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "internalType": "enum FreelancerContract.ContractState",
+        "name": "state",
+        "type": "uint8"
+      },
+      {
+        "internalType": "string",
+        "name": "ipfsHash",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "createdAt",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "submittedAt",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      }
+    ],
+    "name": "openDispute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_clientPercentage",
+        "type": "uint256"
+      }
+    ],
+    "name": "resolveDispute",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "_jobId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "_ipfsHash",
+        "type": "string"
+      }
+    ],
+    "name": "submitWork",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+] as const;
 
 export const CONTRACT_STATES = {
     0: 'Pending',

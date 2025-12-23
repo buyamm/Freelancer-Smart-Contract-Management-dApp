@@ -1,11 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useContractWrite, usePrepareContractWrite, useWaitForTransaction } from 'wagmi';
+import { useContractWrite, usePrepareContractWrite, useWaitForTransaction, useAccount } from 'wagmi';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contract';
-import { parseEther } from 'viem';
+import { parseEther, isAddress } from 'viem';
+import NetworkChecker from './NetworkChecker';
+import ArbiterSelector from './ArbiterSelector';
 
 export default function CreateJobForm() {
+    const { isConnected } = useAccount();
     const [formData, setFormData] = useState({
         title: '',
         description: '',
@@ -18,7 +21,21 @@ export default function CreateJobForm() {
     const deadlineTimestamp = formData.deadline ?
         Math.floor(new Date(formData.deadline).getTime() / 1000) : 0;
 
-    const { config } = usePrepareContractWrite({
+    // Validation logic
+    const isFormValid = !!(
+        formData.title.trim() &&
+        formData.description.trim() &&
+        formData.payment &&
+        parseFloat(formData.payment) > 0 &&
+        formData.deadline &&
+        formData.arbiter &&
+        isAddress(formData.arbiter) &&
+        deadlineTimestamp > Date.now() / 1000 &&
+        CONTRACT_ADDRESS &&
+        isConnected
+    );
+
+    const { config, error: prepareError } = usePrepareContractWrite({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: CONTRACT_ABI,
         functionName: 'createJob',
@@ -29,11 +46,10 @@ export default function CreateJobForm() {
             formData.arbiter as `0x${string}`
         ],
         value: formData.payment ? parseEther(formData.payment) : undefined,
-        enabled: !!(formData.title && formData.description && formData.payment &&
-            formData.deadline && formData.arbiter && deadlineTimestamp > Date.now() / 1000)
+        enabled: isFormValid
     });
 
-    const { data, write } = useContractWrite(config);
+    const { data, write, error: writeError } = useContractWrite(config);
 
     const { isLoading, isSuccess } = useWaitForTransaction({
         hash: data?.hash,
@@ -106,6 +122,8 @@ export default function CreateJobForm() {
                 </button>
             </div>
 
+            <NetworkChecker />
+
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -171,29 +189,27 @@ export default function CreateJobForm() {
                     </div>
                 </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Địa chỉ Arbiter *
-                    </label>
-                    <input
-                        type="text"
-                        name="arbiter"
-                        value={formData.arbiter}
-                        onChange={handleInputChange}
-                        className="input"
-                        placeholder="0x..."
-                        pattern="^0x[a-fA-F0-9]{40}$"
-                        required
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                        Địa chỉ ví của người trọng tài để giải quyết tranh chấp
-                    </p>
-                </div>
+                <ArbiterSelector
+                    value={formData.arbiter}
+                    onChange={(address) => setFormData({ ...formData, arbiter: address })}
+                />
+
+                {/* Debug info - chỉ hiện khi development */}
+                {process.env.NODE_ENV === 'development' && (
+                    <div className="bg-gray-100 p-3 rounded text-xs">
+                        <div>Contract Address: {CONTRACT_ADDRESS || 'Chưa set'}</div>
+                        <div>Connected: {isConnected ? 'Yes' : 'No'}</div>
+                        <div>Form Valid: {isFormValid ? 'Yes' : 'No'}</div>
+                        <div>Write Available: {write ? 'Yes' : 'No'}</div>
+                        {prepareError && <div className="text-red-600">Prepare Error: {prepareError.message}</div>}
+                        {writeError && <div className="text-red-600">Write Error: {writeError.message}</div>}
+                    </div>
+                )}
 
                 <div className="flex space-x-3 pt-4">
                     <button
                         type="submit"
-                        disabled={isLoading || !write}
+                        disabled={isLoading || !write || !isFormValid}
                         className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isLoading ? 'Đang tạo...' : 'Tạo hợp đồng'}

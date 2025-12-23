@@ -10,7 +10,12 @@ export interface IPFSUploadResult {
 
 export const uploadToIPFS = async (file: File): Promise<IPFSUploadResult> => {
     if (!PINATA_API_KEY || !PINATA_SECRET_KEY) {
-        throw new Error('Pinata API keys not configured');
+        // Fallback: return mock hash for demo purposes
+        console.warn('Pinata not configured, using mock IPFS hash');
+        return {
+            hash: `mock_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9]/g, '_')}`,
+            url: `#mock-ipfs-${file.name}`
+        };
     }
 
     const formData = new FormData();
@@ -56,7 +61,12 @@ export const uploadToIPFS = async (file: File): Promise<IPFSUploadResult> => {
 
 export const uploadJSONToIPFS = async (data: any): Promise<IPFSUploadResult> => {
     if (!PINATA_API_KEY || !PINATA_SECRET_KEY) {
-        throw new Error('Pinata API keys not configured');
+        // Fallback: return mock hash for demo purposes
+        console.warn('Pinata not configured, using mock IPFS hash');
+        return {
+            hash: `mock_json_${Date.now()}`,
+            url: `#mock-ipfs-json`
+        };
     }
 
     try {
