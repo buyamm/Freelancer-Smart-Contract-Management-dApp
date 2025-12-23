@@ -1,0 +1,21 @@
+{
+  "pages": {
+    "/mock/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/mock/page.js"
+    ],
+    "/mock/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/mock/layout.css",
+      "static/chunks/app/mock/layout.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/layout.css",
+      "static/chunks/app/layout.js"
+    ]
+  }
+}

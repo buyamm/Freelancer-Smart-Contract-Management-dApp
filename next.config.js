@@ -10,6 +10,19 @@ const nextConfig = {
     };
     return config;
   },
+  async redirects() {
+    // Redirect to mock page in development
+    if (process.env.NODE_ENV === 'development') {
+      return [
+        {
+          source: '/',
+          destination: '/mock',
+          permanent: false,
+        },
+      ]
+    }
+    return []
+  },
 }
 
 module.exports = nextConfig;

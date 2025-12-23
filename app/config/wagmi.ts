@@ -7,14 +7,14 @@ import { infuraProvider } from 'wagmi/providers/infura';
 const { chains, publicClient, webSocketPublicClient } = configureChains(
     [sepolia, polygon, polygonMumbai],
     [
-        infuraProvider({ apiKey: process.env.NEXT_PUBLIC_INFURA_KEY || '' }),
+        infuraProvider({ apiKey: process.env.NEXT_PUBLIC_INFURA_KEY || 'mock_infura_key' }),
         publicProvider(),
     ]
 );
 
 const { connectors } = getDefaultWallets({
     appName: 'Freelancer Smart Contract dApp',
-    projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || '',
+    projectId: process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || 'mock_project_id_for_development',
     chains,
 });
 
