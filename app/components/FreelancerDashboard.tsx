@@ -6,6 +6,7 @@ import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_STATES } from '../config/contr
 import { formatEther } from 'viem';
 import JobDetailModal from './JobDetailModal';
 import UpdateContactInfo from './UpdateContactInfo';
+import FreelancerRatingBadge from './FreelancerRatingBadge';
 
 interface Job {
     id: bigint;
@@ -73,6 +74,7 @@ export default function FreelancerDashboard() {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-gray-900">👨‍💻 Dashboard Freelancer</h2>
+                {address && <FreelancerRatingBadge address={address} />}
             </div>
 
             {/* Stats */}

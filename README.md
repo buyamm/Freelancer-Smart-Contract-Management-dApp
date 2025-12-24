@@ -1,137 +1,156 @@
-# Freelancer Smart Contract Management dApp
+# Freelancer Smart Contract dApp - Version 2.0
 
-Nền tảng quản lý hợp đồng freelancer an toàn và minh bạch trên blockchain với tích hợp IPFS.
+Hệ thống freelancer phi tập trung với **3 tính năng mới**: Ứng tuyển, Lịch sử nộp bài, và Đánh giá.
 
-## ✨ Tính năng chính
+## 🆕 Tính năng mới (v2.0)
 
-### 🔹 Web3 / Wallet Integration
-- Kết nối MetaMask / WalletConnect
-- Tự động nhận địa chỉ ví người dùng
-- Hỗ trợ Ethereum testnet (Sepolia) và Polygon
-- Xác thực vai trò theo ví (Client/Freelancer/Arbiter)
+### 1. **Hệ thống ứng tuyển**
+- Freelancer ứng tuyển với proposal thay vì nhận trực tiếp
+- Client xem danh sách ứng viên và chọn người phù hợp
+- Hiển thị rating của freelancer trong danh sách
 
-### 🔹 Quản lý hợp đồng
-- Tạo hợp đồng với thanh toán ETH
-- Theo dõi trạng thái hợp đồng realtime
-- Xem danh sách hợp đồng theo vai trò
-- Chi tiết hợp đồng với thông tin đầy đủ
+### 2. **Lịch sử nộp bài** 
+- Freelancer nộp nhiều lần, mỗi lần lưu vào IPFS
+- Client xem được toàn bộ lịch sử sửa đổi
+- Mỗi lần nộp có thể kèm ghi chú
 
-### 🔹 IPFS Storage
-- Upload kết quả công việc lên IPFS (Pinata)
-- Smart contract chỉ lưu IPFS hash
-- Client xem và tải kết quả từ IPFS
-- Lưu trữ phi tập trung an toàn
+### 3. **Đánh giá freelancer**
+- Client đánh giá 1-5 sao sau khi hoàn thành
+- Tính điểm trung bình cho freelancer
+- Rating hiển thị trong profile và khi ứng tuyển
 
-### 🔹 Bảo vệ & An toàn
-- Re-entrancy protection
-- Kiểm tra deadline tự động
-- Validation đầy đủ cho mọi thao tác
-- Smart contract được audit
+## 🚀 Cài đặt
 
-### 🔹 Hệ thống tranh chấp
-- Client/Freelancer có thể mở tranh chấp
-- Arbiter giải quyết tranh chấp
-- Phân chia tiền theo phần trăm
-- Phí arbiter 5%
-
-## 🏗️ Kiến trúc
-
-```
-[Frontend - Next.js + React]
-         |
-         | Web3.js / Ethers.js
-         |
-[Smart Contract - Solidity]
-         |
-         | Store IPFS Hash
-         |
-      [IPFS - Pinata]
-```
-
-## 🚀 Cài đặt và chạy
-
-### 1. Clone repository
 ```bash
-git clone <repository-url>
-cd freelancer-smart-contract-dapp
-```
+# Clone repository
+git clone <repo-url>
+cd freelancer-contract
 
-### 2. Cài đặt dependencies
-```bash
+# Cài đặt dependencies
 npm install
-```
 
-### 3. Cấu hình environment
-```bash
+# Cấu hình environment
 cp .env.example .env.local
-```
+# Cập nhật các biến môi trường
 
-Điền thông tin vào `.env.local`:
-- `NEXT_PUBLIC_INFURA_KEY`: API key từ Infura
-- `NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID`: Project ID từ WalletConnect
-- `NEXT_PUBLIC_PINATA_API_KEY`: API key từ Pinata
-- `NEXT_PUBLIC_PINATA_SECRET_KEY`: Secret key từ Pinata
-- `PRIVATE_KEY`: Private key để deploy contract
+# Compile smart contract
+npx hardhat compile
 
-### 4. Compile và deploy smart contract
-```bash
-# Compile contract
-npm run compile
+# Deploy contract (localhost)
+npx hardhat node
+npx hardhat run scripts/deploy.js --network localhost
 
-# Deploy to Sepolia testnet
-npm run deploy
-```
+# Cập nhật CONTRACT_ADDRESS trong .env.local
+NEXT_PUBLIC_CONTRACT_ADDRESS=<địa_chỉ_contract>
 
-### 5. Cập nhật contract address
-Sau khi deploy, cập nhật `NEXT_PUBLIC_CONTRACT_ADDRESS` trong `.env.local`
-
-### 6. Chạy ứng dụng
-```bash
+# Chạy frontend
 npm run dev
 ```
 
-Truy cập http://localhost:3000
+## 📋 Quy trình sử dụng
 
-## 📋 Trạng thái hợp đồng
+### Cho Client:
+1. **Tạo job** với mô tả chi tiết và đặt cọc ETH
+2. **Xem ứng viên** - Freelancer sẽ ứng tuyển với proposal
+3. **Chọn freelancer** phù hợp từ danh sách (có rating)
+4. **Theo dõi tiến độ** - Xem lịch sử nộp bài của freelancer
+5. **Duyệt kết quả** và **đánh giá freelancer** 1-5 sao
 
-- **Pending**: Hợp đồng mới tạo, chưa có freelancer
-- **Funded**: Đã có tiền, chờ freelancer nhận
-- **InProgress**: Freelancer đang thực hiện
-- **Submitted**: Freelancer đã nộp kết quả
-- **Completed**: Client đã duyệt và thanh toán
-- **Canceled**: Hợp đồng bị hủy
-- **Disputed**: Đang trong tranh chấp
+### Cho Freelancer:
+1. **Cập nhật profile** với thông tin liên lạc
+2. **Ứng tuyển job** với proposal thuyết phục
+3. **Chờ được chọn** bởi client
+4. **Làm việc và nộp kết quả** (có thể nộp nhiều lần)
+5. **Nhận thanh toán** và **rating** từ client
 
-## 🔧 Smart Contract Functions
+## 🎯 Smart Contract
 
-### Client Functions
-- `createJob()`: Tạo hợp đồng mới
-- `approveWork()`: Duyệt công việc
-- `cancelJob()`: Hủy hợp đồng
-- `openDispute()`: Mở tranh chấp
+### Các hàm chính:
 
-### Freelancer Functions
-- `acceptJob()`: Nhận việc
-- `submitWork()`: Nộp kết quả
-- `openDispute()`: Mở tranh chấp
+```solidity
+// Ứng tuyển
+function applyForJob(uint256 _jobId, string memory _proposal)
+function selectFreelancer(uint256 _jobId, address _freelancer)
 
-### Arbiter Functions
-- `resolveDispute()`: Giải quyết tranh chấp
+// Nộp bài
+function submitWork(uint256 _jobId, string memory _ipfsHash, string memory _comment)
+function getJobSubmissions(uint256 _jobId) returns (Submission[] memory)
 
-## 🛡️ Bảo mật
+// Đánh giá  
+function rateFreelancer(uint256 _jobId, uint8 _score, string memory _comment)
+function getFreelancerAverageRating(address _freelancer) returns (uint256, uint256)
+```
 
-- Sử dụng OpenZeppelin contracts
-- ReentrancyGuard protection
-- Proper access control
-- Input validation
-- Deadline checking
+### Cấu trúc dữ liệu:
 
-## 🌐 Networks hỗ trợ
+```solidity
+struct Application {
+    address freelancer;
+    string proposal;
+    uint256 appliedAt;
+    bool isSelected;
+}
 
-- Ethereum Sepolia Testnet
-- Polygon Mainnet
-- Polygon Mumbai Testnet
+struct Submission {
+    string ipfsHash;
+    uint256 submittedAt;
+    string comment;
+}
 
-## 📝 License
+struct Rating {
+    uint8 score;        // 1-5 sao
+    string comment;
+    uint256 ratedAt;
+}
+```
 
-MIT License
+## 🔧 Cấu hình
+
+- **AUTO_APPROVE_DAYS**: 3 ngày (tự động duyệt)
+- **PENALTY_RATE**: 10% (phạt nộp muộn)
+- **Network**: Localhost, Sepolia, Mainnet
+- **IPFS**: Pinata gateway
+
+## 📱 Components
+
+- **ApplicationsList**: Danh sách ứng viên cho client
+- **SubmissionHistory**: Lịch sử nộp bài
+- **RatingForm**: Form đánh giá freelancer
+- **FreelancerRatingBadge**: Badge hiển thị rating
+
+## 🧪 Testing
+
+```bash
+# Test contract
+npx hardhat test
+
+# Test frontend
+npm run build
+npm run dev
+
+# Xem hướng dẫn test chi tiết
+cat QUICK_TEST_V2.md
+```
+
+## 📚 Documentation
+
+- [CHANGELOG.md](./CHANGELOG.md) - Chi tiết các thay đổi
+- [QUICK_TEST_V2.md](./QUICK_TEST_V2.md) - Hướng dẫn test
+- [HUONG_DAN_SU_DUNG.md](./HUONG_DAN_SU_DUNG.md) - Hướng dẫn sử dụng
+
+## 🔗 Links
+
+- **Frontend**: http://localhost:3000
+- **Hardhat Network**: http://localhost:8545
+- **IPFS Gateway**: https://gateway.pinata.cloud/ipfs/
+
+## 🤝 Contributing
+
+1. Fork repository
+2. Tạo feature branch
+3. Commit changes
+4. Push và tạo Pull Request
+
+## 📄 License
+
+MIT License - xem [LICENSE](./LICENSE) để biết thêm chi tiết.

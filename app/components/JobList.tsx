@@ -105,7 +105,7 @@ function JobCard({
     onViewDetail
 }: {
     jobId: bigint;
-    userRole: 'client' | 'freelancer' | 'arbiter';
+    userRole: 'client' | 'freelancer';
     onViewDetail: (job: Job) => void;
 }) {
     const { data: job } = useContractRead({
@@ -142,9 +142,6 @@ function JobCard({
         if (userRole === 'freelancer') {
             if (job.state === 2) return { text: '📤 Nộp kết quả', highlight: true };
             if (job.state === 3) return { text: '⏳ Đang chờ duyệt', highlight: false };
-        }
-        if (userRole === 'arbiter') {
-            if (job.state === 6) return { text: '⚖️ Giải quyết', highlight: true };
         }
         return null;
     };

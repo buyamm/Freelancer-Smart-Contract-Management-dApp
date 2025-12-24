@@ -66,7 +66,7 @@ export default function CreateJobForm() {
             formData.contactPhone,
             formData.contactChat
         ],
-        enabled: isConnected && (formData.contactName || formData.contactEmail || formData.contactPhone || formData.contactChat)
+        enabled: isConnected && !!(formData.contactName || formData.contactEmail || formData.contactPhone || formData.contactChat)
     });
 
     const { write: writeContact } = useContractWrite(contactConfig);

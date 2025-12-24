@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useAccount, useContractWrite, usePrepareContractWrite, useWaitForTransaction } from 'wagmi';
+import { useAccount, useContractWrite, usePrepareContractWrite, useWaitForTransaction, useContractRead } from 'wagmi';
 import { CONTRACT_ADDRESS, CONTRACT_ABI, CONTRACT_STATES } from '../config/contract';
 import { formatEther } from 'viem';
 import { uploadToIPFS, uploadJSONToIPFS } from '../utils/ipfs';
 import ContactInfoDisplay from './ContactInfoDisplay';
+import ApplicationsList from './ApplicationsList';
+import SubmissionHistory from './SubmissionHistory';
+import RatingForm from './RatingForm';
 
 interface Job {
     id: bigint;
@@ -30,12 +33,14 @@ interface JobDetailModalProps {
     onSuccess?: () => void;
 }
 
-type SuccessType = 'accepted' | 'submitted' | 'approved' | 'canceled' | 'rejected' | 'extended' | 'removed' | 'autoApproved' | null;
+type SuccessType = 'accepted' | 'submitted' | 'approved' | 'canceled' | 'rejected' | 'extended' | 'removed' | 'autoApproved' | 'applied' | 'selected' | null;
 
 export default function JobDetailModal({ job, onClose, userRole, onSuccess }: JobDetailModalProps) {
     const { address } = useAccount();
     const [cancelReason, setCancelReason] = useState('Canceled by client');
     const [successMessage, setSuccessMessage] = useState<SuccessType>(null);
+    const [proposal, setProposal] = useState('');
+    const [submitComment, setSubmitComment] = useState('');
 
     // File upload states
     const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -45,8 +50,27 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
 
     const isClient = address?.toLowerCase() === job.client.toLowerCase();
     const isFreelancer = address?.toLowerCase() === job.freelancer.toLowerCase();
+    const isZeroAddress = (addr: string) => addr === '0x0000000000000000000000000000000000000000';
 
-    // Handle success and close
+    // Check if freelancer has applied
+    const { data: hasApplied } = useContractRead({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'hasFreelancerApplied',
+        args: [job.id, address as `0x${string}`],
+        enabled: !!address && job.state === 1,
+        watch: true,
+    }) as { data: boolean | undefined };
+
+    // Get application count
+    const { data: applicationCount } = useContractRead({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'getApplicationCount',
+        args: [job.id],
+        watch: true,
+    }) as { data: bigint | undefined };
+
     const handleSuccess = useCallback((type: SuccessType) => {
         setSuccessMessage(type);
         setTimeout(() => {
@@ -55,35 +79,48 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
         }, 2000);
     }, [onClose, onSuccess]);
 
-    // Accept Job
+    // Apply for Job
+    const { config: applyConfig, refetch: refetchApply } = usePrepareContractWrite({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: 'applyForJob',
+        args: [job.id, proposal],
+        enabled: job.state === 1 && !isClient && !hasApplied && proposal.length > 0,
+    });
+    const { write: applyForJob, data: applyData } = useContractWrite(applyConfig);
+    const { isLoading: isApplying, isSuccess: applySuccess } = useWaitForTransaction({ hash: applyData?.hash });
+
+    useEffect(() => {
+        if (proposal) refetchApply();
+    }, [proposal, refetchApply]);
+
+    // Accept Job (direct - only if no applications)
+    const canAcceptDirect = job.state === 1 && !isClient && (!applicationCount || applicationCount === BigInt(0));
     const { config: acceptConfig } = usePrepareContractWrite({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: CONTRACT_ABI,
         functionName: 'acceptJob',
         args: [job.id],
-        enabled: job.state === 1 && !isClient,
+        enabled: canAcceptDirect,
     });
     const { write: acceptJob, data: acceptData } = useContractWrite(acceptConfig);
     const { isLoading: isAccepting, isSuccess: acceptSuccess } = useWaitForTransaction({ hash: acceptData?.hash });
 
-    // Submit Work - với watch để re-prepare khi ipfsHash thay đổi
-    const canSubmit = job.state === 2 && isFreelancer && ipfsHash.length > 0;
+    // Submit Work with comment
+    const canSubmit = (job.state === 2 || job.state === 3) && isFreelancer && ipfsHash.length > 0;
     const { config: submitConfig, refetch: refetchSubmit } = usePrepareContractWrite({
         address: CONTRACT_ADDRESS as `0x${string}`,
         abi: CONTRACT_ABI,
         functionName: 'submitWork',
-        args: [job.id, ipfsHash || 'placeholder'],
+        args: [job.id, ipfsHash || 'placeholder', submitComment],
         enabled: canSubmit,
     });
     const { write: submitWork, data: submitData } = useContractWrite(submitConfig);
     const { isLoading: isSubmitting, isSuccess: submitSuccess } = useWaitForTransaction({ hash: submitData?.hash });
 
-    // Re-prepare khi ipfsHash thay đổi
     useEffect(() => {
-        if (ipfsHash && canSubmit) {
-            refetchSubmit();
-        }
-    }, [ipfsHash, canSubmit, refetchSubmit]);
+        if (ipfsHash && canSubmit) refetchSubmit();
+    }, [ipfsHash, submitComment, canSubmit, refetchSubmit]);
 
     // Approve Work
     const { config: approveConfig } = usePrepareContractWrite({
@@ -108,14 +145,11 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
     const { write: cancelJob, data: cancelData } = useContractWrite(cancelConfig);
     const { isLoading: isCanceling, isSuccess: cancelSuccess } = useWaitForTransaction({ hash: cancelData?.hash });
 
-    // Re-prepare khi cancelReason thay đổi
     useEffect(() => {
-        if (cancelReason && canCancel) {
-            refetchCancel();
-        }
+        if (cancelReason && canCancel) refetchCancel();
     }, [cancelReason, canCancel, refetchCancel]);
 
-    // Reject Work (Client từ chối kết quả)
+    // Reject Work
     const [rejectReason, setRejectReason] = useState('');
     const [showRejectForm, setShowRejectForm] = useState(false);
     const canReject = isClient && job.state === 3 && Date.now() / 1000 <= Number(job.deadline);
@@ -130,12 +164,10 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
     const { isLoading: isRejecting, isSuccess: rejectSuccess } = useWaitForTransaction({ hash: rejectData?.hash });
 
     useEffect(() => {
-        if (rejectReason && canReject) {
-            refetchReject();
-        }
+        if (rejectReason && canReject) refetchReject();
     }, [rejectReason, canReject, refetchReject]);
 
-    // Extend Deadline (Client gia hạn deadline)
+    // Extend Deadline
     const [newDeadline, setNewDeadline] = useState('');
     const [showExtendForm, setShowExtendForm] = useState(false);
     const newDeadlineTimestamp = newDeadline ? Math.floor(new Date(newDeadline).getTime() / 1000) : 0;
@@ -151,12 +183,10 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
     const { isLoading: isExtending, isSuccess: extendSuccess } = useWaitForTransaction({ hash: extendData?.hash });
 
     useEffect(() => {
-        if (newDeadlineTimestamp && canExtend) {
-            refetchExtend();
-        }
+        if (newDeadlineTimestamp && canExtend) refetchExtend();
     }, [newDeadlineTimestamp, canExtend, refetchExtend]);
 
-    // Remove Freelancer (Client xóa freelancer)
+    // Remove Freelancer
     const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
     const canRemove = isClient && (job.state === 2 || job.state === 3);
     const { config: removeConfig } = usePrepareContractWrite({
@@ -169,8 +199,8 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
     const { write: removeFreelancer, data: removeData } = useContractWrite(removeConfig);
     const { isLoading: isRemoving, isSuccess: removeSuccess } = useWaitForTransaction({ hash: removeData?.hash });
 
-    // Auto Approve (Tự động duyệt sau 3 ngày)
-    const autoApproveTime = Number(job.deadline) + (3 * 24 * 60 * 60); // deadline + 3 days
+    // Auto Approve
+    const autoApproveTime = Number(job.deadline) + (3 * 24 * 60 * 60);
     const canAutoApprove = job.state === 3 && Date.now() / 1000 > autoApproveTime;
     const { config: autoApproveConfig } = usePrepareContractWrite({
         address: CONTRACT_ADDRESS as `0x${string}`,
@@ -183,42 +213,19 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
     const { isLoading: isAutoApproving, isSuccess: autoApproveSuccess } = useWaitForTransaction({ hash: autoApproveData?.hash });
 
     // Watch for success
-    useEffect(() => {
-        if (acceptSuccess) handleSuccess('accepted');
-    }, [acceptSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (submitSuccess) handleSuccess('submitted');
-    }, [submitSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (approveSuccess) handleSuccess('approved');
-    }, [approveSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (cancelSuccess) handleSuccess('canceled');
-    }, [cancelSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (rejectSuccess) handleSuccess('rejected');
-    }, [rejectSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (extendSuccess) handleSuccess('extended');
-    }, [extendSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (removeSuccess) handleSuccess('removed');
-    }, [removeSuccess, handleSuccess]);
-
-    useEffect(() => {
-        if (autoApproveSuccess) handleSuccess('autoApproved');
-    }, [autoApproveSuccess, handleSuccess]);
+    useEffect(() => { if (applySuccess) handleSuccess('applied'); }, [applySuccess, handleSuccess]);
+    useEffect(() => { if (acceptSuccess) handleSuccess('accepted'); }, [acceptSuccess, handleSuccess]);
+    useEffect(() => { if (submitSuccess) handleSuccess('submitted'); }, [submitSuccess, handleSuccess]);
+    useEffect(() => { if (approveSuccess) handleSuccess('approved'); }, [approveSuccess, handleSuccess]);
+    useEffect(() => { if (cancelSuccess) handleSuccess('canceled'); }, [cancelSuccess, handleSuccess]);
+    useEffect(() => { if (rejectSuccess) handleSuccess('rejected'); }, [rejectSuccess, handleSuccess]);
+    useEffect(() => { if (extendSuccess) handleSuccess('extended'); }, [extendSuccess, handleSuccess]);
+    useEffect(() => { if (removeSuccess) handleSuccess('removed'); }, [removeSuccess, handleSuccess]);
+    useEffect(() => { if (autoApproveSuccess) handleSuccess('autoApproved'); }, [autoApproveSuccess, handleSuccess]);
 
     // File upload handler
     const handleFileUpload = async () => {
         if (selectedFiles.length === 0) return;
-
         setIsUploading(true);
         setUploadProgress('Đang chuẩn bị upload...');
 
@@ -231,23 +238,13 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
             } else {
                 setUploadProgress('Đang upload nhiều files...');
                 const uploadedFiles = [];
-
                 for (let i = 0; i < selectedFiles.length; i++) {
                     setUploadProgress(`Đang upload ${i + 1}/${selectedFiles.length}: ${selectedFiles[i].name}`);
                     const result = await uploadToIPFS(selectedFiles[i]);
-                    uploadedFiles.push({
-                        name: selectedFiles[i].name,
-                        hash: result.hash,
-                        url: result.url,
-                    });
+                    uploadedFiles.push({ name: selectedFiles[i].name, hash: result.hash, url: result.url });
                 }
-
                 setUploadProgress('Đang tạo metadata...');
-                const metadata = {
-                    jobId: job.id.toString(),
-                    submittedAt: new Date().toISOString(),
-                    files: uploadedFiles,
-                };
+                const metadata = { jobId: job.id.toString(), submittedAt: new Date().toISOString(), files: uploadedFiles };
                 const metaResult = await uploadJSONToIPFS(metadata);
                 setIpfsHash(metaResult.hash);
                 setUploadProgress('✅ Upload thành công!');
@@ -260,40 +257,32 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
         }
     };
 
-    const formatDate = (timestamp: bigint) => {
-        return new Date(Number(timestamp) * 1000).toLocaleString('vi-VN');
-    };
-
+    const formatDate = (timestamp: bigint) => new Date(Number(timestamp) * 1000).toLocaleString('vi-VN');
     const getStateColor = (state: number) => {
         const colors: Record<number, string> = {
-            0: 'bg-yellow-100 text-yellow-800',
-            1: 'bg-blue-100 text-blue-800',
-            2: 'bg-purple-100 text-purple-800',
-            3: 'bg-orange-100 text-orange-800',
-            4: 'bg-green-100 text-green-800',
-            5: 'bg-red-100 text-red-800',
-            6: 'bg-red-100 text-red-800',
+            0: 'bg-yellow-100 text-yellow-800', 1: 'bg-blue-100 text-blue-800',
+            2: 'bg-purple-100 text-purple-800', 3: 'bg-orange-100 text-orange-800',
+            4: 'bg-green-100 text-green-800', 5: 'bg-red-100 text-red-800',
         };
         return colors[state] || 'bg-gray-100 text-gray-800';
     };
-
     const shortenAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    const isZeroAddress = (addr: string) => addr === '0x0000000000000000000000000000000000000000';
 
     // Success overlay
     if (successMessage) {
         const messages: Record<string, { icon: string; title: string; desc: string }> = {
+            applied: { icon: '📝', title: 'Ứng tuyển thành công!', desc: 'Chờ client xem xét và chọn bạn.' },
             accepted: { icon: '🎉', title: 'Nhận việc thành công!', desc: 'Bạn đã nhận việc này. Hãy hoàn thành đúng deadline!' },
             submitted: { icon: '📤', title: 'Nộp kết quả thành công!', desc: 'Kết quả đã được gửi. Chờ client duyệt.' },
             approved: { icon: '✅', title: 'Duyệt thành công!', desc: 'Tiền đã được chuyển cho freelancer.' },
             canceled: { icon: '❌', title: 'Đã hủy hợp đồng!', desc: 'Tiền đã được hoàn lại.' },
             rejected: { icon: '🔄', title: 'Đã từ chối kết quả!', desc: 'Freelancer sẽ phải nộp lại kết quả mới.' },
-            extended: { icon: '⏰', title: 'Đã gia hạn deadline!', desc: 'Deadline mới đã được cập nhật. Penalty đã reset về 0.' },
-            removed: { icon: '🗑️', title: 'Đã xóa freelancer!', desc: 'Job đã quay về trạng thái Funded. Bạn có thể tìm freelancer mới.' },
+            extended: { icon: '⏰', title: 'Đã gia hạn deadline!', desc: 'Deadline mới đã được cập nhật.' },
+            removed: { icon: '🗑️', title: 'Đã xóa freelancer!', desc: 'Job đã quay về trạng thái Funded.' },
             autoApproved: { icon: '✅', title: 'Đã tự động duyệt!', desc: 'Tiền đã được chuyển cho freelancer.' },
+            selected: { icon: '🎯', title: 'Đã chọn freelancer!', desc: 'Freelancer đã được giao việc.' },
         };
         const msg = messages[successMessage];
-
         return (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-lg p-8 max-w-md w-full text-center animate-bounce-in">
@@ -316,6 +305,9 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                         <span className={`inline-block mt-2 px-3 py-1 rounded-full text-sm font-medium ${getStateColor(job.state)}`}>
                             {CONTRACT_STATES[job.state as keyof typeof CONTRACT_STATES]}
                         </span>
+                        {applicationCount && applicationCount > BigInt(0) && job.state === 1 && (
+                            <span className="ml-2 text-sm text-blue-600">👥 {applicationCount.toString()} ứng viên</span>
+                        )}
                     </div>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
                 </div>
@@ -334,38 +326,14 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                             <div className="text-sm text-gray-500">Thanh toán</div>
                             <div className="text-lg font-bold text-green-600">{formatEther(job.payment)} ETH</div>
                             {job.penaltyAmount > 0 && (
-                                <div className="text-xs text-red-600 mt-1">
-                                    Penalty: -{formatEther(job.penaltyAmount)} ETH (10%)
-                                </div>
+                                <div className="text-xs text-red-600 mt-1">Penalty: -{formatEther(job.penaltyAmount)} ETH</div>
                             )}
                         </div>
                         <div className="bg-gray-50 p-4 rounded-lg">
                             <div className="text-sm text-gray-500">Deadline</div>
                             <div className="text-lg font-semibold">{formatDate(job.deadline)}</div>
-                            {job.state === 3 && job.submittedAt > job.deadline && (
-                                <div className="text-xs text-red-600 mt-1">
-                                    ⚠️ Nộp muộn
-                                </div>
-                            )}
                         </div>
                     </div>
-
-                    {/* Penalty Warning */}
-                    {job.penaltyAmount > 0 && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                            <div className="flex items-start">
-                                <span className="text-2xl mr-3">⚠️</span>
-                                <div>
-                                    <h4 className="font-semibold text-red-900 mb-1">Nộp muộn - Bị phạt 10%</h4>
-                                    <p className="text-sm text-red-700">
-                                        Freelancer nộp kết quả sau deadline nên bị phạt {formatEther(job.penaltyAmount)} ETH.
-                                        {isFreelancer && ' Bạn sẽ chỉ nhận được ' + formatEther(job.payment - job.penaltyAmount) + ' ETH.'}
-                                        {isClient && ' Bạn sẽ nhận lại ' + formatEther(job.penaltyAmount) + ' ETH khi duyệt.'}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Participants */}
                     <div className="space-y-3">
@@ -377,41 +345,28 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                             </div>
                             <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
                                 <span className="text-gray-600">Freelancer:</span>
-                                <span className="font-mono">
-                                    {isZeroAddress(job.freelancer) ? 'Chưa có' : shortenAddress(job.freelancer)}
-                                </span>
+                                <span className="font-mono">{isZeroAddress(job.freelancer) ? 'Chưa có' : shortenAddress(job.freelancer)}</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Contact Information */}
+                    {/* Contact Info */}
                     {isClient && !isZeroAddress(job.freelancer) && (
-                        <ContactInfoDisplay
-                            address={job.freelancer}
-                            label="Thông tin liên lạc Freelancer"
-                        />
+                        <ContactInfoDisplay address={job.freelancer} label="Thông tin liên lạc Freelancer" />
+                    )}
+                    {isFreelancer && <ContactInfoDisplay address={job.client} label="Thông tin liên lạc Client" />}
+
+                    {/* Applications List - Client view */}
+                    {isClient && job.state === 1 && applicationCount && applicationCount > BigInt(0) && (
+                        <ApplicationsList jobId={job.id} onSelect={() => handleSuccess('selected')} />
                     )}
 
-                    {isFreelancer && (
-                        <ContactInfoDisplay
-                            address={job.client}
-                            label="Thông tin liên lạc Client"
-                        />
-                    )}
+                    {/* Submission History */}
+                    <SubmissionHistory jobId={job.id} />
 
-                    {/* IPFS Hash if submitted */}
-                    {job.ipfsHash && (
-                        <div>
-                            <h3 className="font-semibold text-gray-700 mb-2">Kết quả công việc (IPFS)</h3>
-                            <a
-                                href={`https://gateway.pinata.cloud/ipfs/${job.ipfsHash}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline break-all"
-                            >
-                                {job.ipfsHash}
-                            </a>
-                        </div>
+                    {/* Rating - for completed jobs */}
+                    {job.state === 4 && !isZeroAddress(job.freelancer) && (
+                        <RatingForm jobId={job.id} freelancerAddress={job.freelancer} isClient={isClient} onSuccess={onSuccess} />
                     )}
 
                     {/* Timestamps */}
@@ -419,116 +374,86 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                         <div>Tạo lúc: {formatDate(job.createdAt)}</div>
                         {job.submittedAt > 0 && <div>Nộp lúc: {formatDate(job.submittedAt)}</div>}
                         {job.rejectionCount > 0 && (
-                            <div className="text-orange-600 font-medium">
-                                ⚠️ Đã bị từ chối: {job.rejectionCount.toString()} lần
-                            </div>
+                            <div className="text-orange-600 font-medium">⚠️ Đã bị từ chối: {job.rejectionCount.toString()} lần</div>
                         )}
                     </div>
                 </div>
 
                 {/* Actions */}
                 <div className="p-6 border-t bg-gray-50 space-y-4">
-                    {/* Freelancer: Accept Job */}
-                    {job.state === 1 && !isClient && (
+                    {/* Freelancer: Apply for Job */}
+                    {job.state === 1 && !isClient && !hasApplied && (
+                        <div className="space-y-3">
+                            <h4 className="font-semibold text-gray-700">📝 Ứng tuyển công việc</h4>
+                            <textarea
+                                value={proposal}
+                                onChange={(e) => setProposal(e.target.value)}
+                                placeholder="Giới thiệu bản thân và lý do bạn phù hợp với công việc này..."
+                                className="input w-full"
+                                rows={3}
+                            />
+                            <button
+                                onClick={() => applyForJob?.()}
+                                disabled={isApplying || !applyForJob || !proposal}
+                                className="btn-primary w-full disabled:opacity-50"
+                            >
+                                {isApplying ? '⏳ Đang gửi...' : '📤 Gửi ứng tuyển'}
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Freelancer: Already applied */}
+                    {job.state === 1 && !isClient && hasApplied && (
+                        <div className="bg-blue-50 p-4 rounded-lg text-center">
+                            <p className="text-blue-800">✅ Bạn đã ứng tuyển công việc này</p>
+                            <p className="text-sm text-blue-600 mt-1">Chờ client xem xét và chọn bạn</p>
+                        </div>
+                    )}
+
+                    {/* Freelancer: Accept Job directly (only if no applications) */}
+                    {canAcceptDirect && !hasApplied && (
                         <button
                             onClick={() => acceptJob?.()}
                             disabled={isAccepting || !acceptJob}
                             className="btn-primary w-full disabled:opacity-50"
                         >
-                            {isAccepting ? '⏳ Đang xử lý...' : '✅ Nhận việc này'}
+                            {isAccepting ? '⏳ Đang xử lý...' : '✅ Nhận việc ngay'}
                         </button>
                     )}
 
-                    {/* Freelancer: Submit Work - File Upload */}
-                    {job.state === 2 && isFreelancer && (
+                    {/* Freelancer: Submit Work */}
+                    {(job.state === 2 || job.state === 3) && isFreelancer && (
                         <div className="space-y-4">
                             <h4 className="font-semibold text-gray-700">📤 Nộp kết quả công việc</h4>
-
-                            {/* File Input */}
                             <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 transition-colors">
-                                <input
-                                    type="file"
-                                    multiple
-                                    onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))}
-                                    className="hidden"
-                                    id="file-upload"
-                                />
+                                <input type="file" multiple onChange={(e) => setSelectedFiles(Array.from(e.target.files || []))} className="hidden" id="file-upload" />
                                 <label htmlFor="file-upload" className="cursor-pointer">
                                     <div className="text-4xl mb-2">📁</div>
-                                    <p className="text-gray-600">Click để chọn file hoặc kéo thả vào đây</p>
-                                    <p className="text-xs text-gray-400 mt-1">Hỗ trợ nhiều file</p>
+                                    <p className="text-gray-600">Click để chọn file</p>
                                 </label>
                             </div>
-
-                            {/* Selected Files */}
                             {selectedFiles.length > 0 && (
                                 <div className="bg-blue-50 p-3 rounded-lg">
-                                    <p className="text-sm font-medium text-blue-800 mb-2">
-                                        Đã chọn {selectedFiles.length} file:
-                                    </p>
+                                    <p className="text-sm font-medium text-blue-800 mb-2">Đã chọn {selectedFiles.length} file:</p>
                                     <ul className="text-sm text-blue-700 space-y-1">
-                                        {selectedFiles.map((file, idx) => (
-                                            <li key={idx}>📄 {file.name} ({(file.size / 1024).toFixed(1)} KB)</li>
-                                        ))}
+                                        {selectedFiles.map((file, idx) => <li key={idx}>📄 {file.name}</li>)}
                                     </ul>
                                 </div>
                             )}
-
-                            {/* Upload Button */}
                             {selectedFiles.length > 0 && !ipfsHash && (
-                                <button
-                                    onClick={handleFileUpload}
-                                    disabled={isUploading}
-                                    className="btn-secondary w-full disabled:opacity-50"
-                                >
+                                <button onClick={handleFileUpload} disabled={isUploading} className="btn-secondary w-full disabled:opacity-50">
                                     {isUploading ? uploadProgress : '☁️ Upload lên IPFS'}
                                 </button>
                             )}
-
-                            {/* Upload Progress */}
-                            {uploadProgress && !ipfsHash && (
-                                <p className="text-sm text-center text-gray-600">{uploadProgress}</p>
-                            )}
-
-                            {/* IPFS Hash Result */}
                             {ipfsHash && (
                                 <div className="bg-green-50 p-3 rounded-lg">
-                                    <p className="text-sm font-medium text-green-800 mb-1">✅ Đã upload thành công!</p>
+                                    <p className="text-sm font-medium text-green-800 mb-1">✅ Đã upload!</p>
                                     <p className="text-xs text-green-700 font-mono break-all">{ipfsHash}</p>
                                 </div>
                             )}
-
-                            {/* Or Manual Input */}
-                            <div className="relative">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-gray-300"></div>
-                                </div>
-                                <div className="relative flex justify-center text-sm">
-                                    <span className="px-2 bg-gray-50 text-gray-500">hoặc nhập IPFS hash</span>
-                                </div>
-                            </div>
-
-                            <input
-                                type="text"
-                                value={ipfsHash}
-                                onChange={(e) => setIpfsHash(e.target.value)}
-                                placeholder="QmXxx... hoặc bafyxxx..."
-                                className="input w-full text-sm"
-                            />
-
-                            {/* Debug info */}
-                            {ipfsHash && (
-                                <div className="text-xs text-gray-400">
-                                    Hash: {ipfsHash.length} chars | Can submit: {canSubmit ? 'Yes' : 'No'} | Write ready: {submitWork ? 'Yes' : 'No'}
-                                </div>
-                            )}
-
-                            {/* Submit Button */}
-                            <button
-                                onClick={() => submitWork?.()}
-                                disabled={isSubmitting || !submitWork || !ipfsHash}
-                                className="btn-primary w-full disabled:opacity-50"
-                            >
+                            <input type="text" value={ipfsHash} onChange={(e) => setIpfsHash(e.target.value)} placeholder="Hoặc nhập IPFS hash..." className="input w-full text-sm" />
+                            <textarea value={submitComment} onChange={(e) => setSubmitComment(e.target.value)} placeholder="Ghi chú cho lần nộp này (tùy chọn)..." className="input w-full text-sm" rows={2} />
+                            <button onClick={() => submitWork?.()} disabled={isSubmitting || !submitWork || !ipfsHash} className="btn-primary w-full disabled:opacity-50">
                                 {isSubmitting ? '⏳ Đang nộp...' : '📤 Nộp kết quả'}
                             </button>
                         </div>
@@ -536,79 +461,38 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
 
                     {/* Client: Approve Work */}
                     {job.state === 3 && isClient && (
-                        <div className="space-y-3">
-                            <button
-                                onClick={() => approveWork?.()}
-                                disabled={isApproving || !approveWork}
-                                className="btn-primary w-full disabled:opacity-50"
-                            >
-                                {isApproving ? '⏳ Đang duyệt...' : '✅ Duyệt và thanh toán'}
-                            </button>
-
-                            {/* Auto Approve Info */}
-                            {!canAutoApprove && (
-                                <div className="text-xs text-gray-500 text-center">
-                                    💡 Nếu không duyệt, sau {Math.ceil((autoApproveTime - Date.now() / 1000) / 86400)} ngày sẽ tự động duyệt
-                                </div>
-                            )}
-                        </div>
+                        <button onClick={() => approveWork?.()} disabled={isApproving || !approveWork} className="btn-primary w-full disabled:opacity-50">
+                            {isApproving ? '⏳ Đang duyệt...' : '✅ Duyệt và thanh toán'}
+                        </button>
                     )}
 
-                    {/* Client: Reject Work (chỉ trước deadline) */}
+                    {/* Client: Reject Work */}
                     {job.state === 3 && isClient && canReject && (
                         <div className="space-y-3">
                             {!showRejectForm ? (
-                                <button
-                                    onClick={() => setShowRejectForm(true)}
-                                    className="bg-orange-600 text-white px-4 py-2 rounded-lg w-full hover:bg-orange-700"
-                                >
+                                <button onClick={() => setShowRejectForm(true)} className="bg-orange-600 text-white px-4 py-2 rounded-lg w-full hover:bg-orange-700">
                                     ❌ Từ chối kết quả
                                 </button>
                             ) : (
                                 <div className="space-y-3 bg-orange-50 p-4 rounded-lg border border-orange-200">
                                     <h4 className="font-semibold text-orange-900">Từ chối kết quả</h4>
-                                    <textarea
-                                        value={rejectReason}
-                                        onChange={(e) => setRejectReason(e.target.value)}
-                                        placeholder="Lý do từ chối (bắt buộc)..."
-                                        className="input w-full"
-                                        rows={3}
-                                    />
+                                    <textarea value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Lý do từ chối..." className="input w-full" rows={3} />
                                     <div className="flex space-x-2">
-                                        <button
-                                            onClick={() => rejectWork?.()}
-                                            disabled={isRejecting || !rejectWork || !rejectReason}
-                                            className="btn-primary flex-1 disabled:opacity-50"
-                                        >
-                                            {isRejecting ? '⏳ Đang xử lý...' : 'Xác nhận từ chối'}
+                                        <button onClick={() => rejectWork?.()} disabled={isRejecting || !rejectWork || !rejectReason} className="btn-primary flex-1 disabled:opacity-50">
+                                            {isRejecting ? '⏳ Đang xử lý...' : 'Xác nhận'}
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                setShowRejectForm(false);
-                                                setRejectReason('');
-                                            }}
-                                            className="btn-secondary"
-                                        >
-                                            Hủy
-                                        </button>
+                                        <button onClick={() => { setShowRejectForm(false); setRejectReason(''); }} className="btn-secondary">Hủy</button>
                                     </div>
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* Anyone: Auto Approve (sau 3 ngày) */}
+                    {/* Auto Approve */}
                     {job.state === 3 && canAutoApprove && (
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                             <h4 className="font-semibold text-blue-900 mb-2">⏰ Đã quá thời hạn phản hồi</h4>
-                            <p className="text-sm text-blue-700 mb-3">
-                                Client đã không phản hồi sau 3 ngày. Bất kỳ ai cũng có thể kích hoạt tự động duyệt.
-                            </p>
-                            <button
-                                onClick={() => autoApprove?.()}
-                                disabled={isAutoApproving || !autoApprove}
-                                className="btn-primary w-full disabled:opacity-50"
-                            >
+                            <button onClick={() => autoApprove?.()} disabled={isAutoApproving || !autoApprove} className="btn-primary w-full disabled:opacity-50">
                                 {isAutoApproving ? '⏳ Đang xử lý...' : '✅ Tự động duyệt ngay'}
                             </button>
                         </div>
@@ -618,42 +502,18 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                     {isClient && (job.state === 2 || job.state === 3) && (
                         <div className="space-y-3">
                             {!showExtendForm ? (
-                                <button
-                                    onClick={() => setShowExtendForm(true)}
-                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg w-full hover:bg-blue-700"
-                                >
+                                <button onClick={() => setShowExtendForm(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg w-full hover:bg-blue-700">
                                     ⏰ Gia hạn deadline
                                 </button>
                             ) : (
                                 <div className="space-y-3 bg-blue-50 p-4 rounded-lg border border-blue-200">
                                     <h4 className="font-semibold text-blue-900">Gia hạn deadline</h4>
-                                    <input
-                                        type="datetime-local"
-                                        value={newDeadline}
-                                        onChange={(e) => setNewDeadline(e.target.value)}
-                                        min={new Date(Number(job.deadline) * 1000).toISOString().slice(0, 16)}
-                                        className="input w-full"
-                                    />
-                                    <p className="text-xs text-blue-700">
-                                        💡 Penalty sẽ được reset về 0 khi gia hạn
-                                    </p>
+                                    <input type="datetime-local" value={newDeadline} onChange={(e) => setNewDeadline(e.target.value)} className="input w-full" />
                                     <div className="flex space-x-2">
-                                        <button
-                                            onClick={() => extendDeadline?.()}
-                                            disabled={isExtending || !extendDeadline || !newDeadline}
-                                            className="btn-primary flex-1 disabled:opacity-50"
-                                        >
-                                            {isExtending ? '⏳ Đang xử lý...' : 'Xác nhận gia hạn'}
+                                        <button onClick={() => extendDeadline?.()} disabled={isExtending || !extendDeadline || !newDeadline} className="btn-primary flex-1 disabled:opacity-50">
+                                            {isExtending ? '⏳ Đang xử lý...' : 'Xác nhận'}
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                setShowExtendForm(false);
-                                                setNewDeadline('');
-                                            }}
-                                            className="btn-secondary"
-                                        >
-                                            Hủy
-                                        </button>
+                                        <button onClick={() => { setShowExtendForm(false); setNewDeadline(''); }} className="btn-secondary">Hủy</button>
                                     </div>
                                 </div>
                             )}
@@ -664,33 +524,17 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                     {isClient && (job.state === 2 || job.state === 3) && (
                         <div className="space-y-3">
                             {!showRemoveConfirm ? (
-                                <button
-                                    onClick={() => setShowRemoveConfirm(true)}
-                                    className="bg-red-600 text-white px-4 py-2 rounded-lg w-full hover:bg-red-700"
-                                >
+                                <button onClick={() => setShowRemoveConfirm(true)} className="bg-red-600 text-white px-4 py-2 rounded-lg w-full hover:bg-red-700">
                                     🗑️ Xóa freelancer
                                 </button>
                             ) : (
                                 <div className="space-y-3 bg-red-50 p-4 rounded-lg border border-red-200">
                                     <h4 className="font-semibold text-red-900">⚠️ Xác nhận xóa freelancer</h4>
-                                    <p className="text-sm text-red-700">
-                                        Job sẽ quay về trạng thái "Funded" và bạn có thể tìm freelancer mới.
-                                        Tiền vẫn được giữ trong contract.
-                                    </p>
                                     <div className="flex space-x-2">
-                                        <button
-                                            onClick={() => removeFreelancer?.()}
-                                            disabled={isRemoving || !removeFreelancer}
-                                            className="bg-red-600 text-white px-4 py-2 rounded-lg flex-1 hover:bg-red-700 disabled:opacity-50"
-                                        >
-                                            {isRemoving ? '⏳ Đang xử lý...' : 'Xác nhận xóa'}
+                                        <button onClick={() => removeFreelancer?.()} disabled={isRemoving || !removeFreelancer} className="bg-red-600 text-white px-4 py-2 rounded-lg flex-1 disabled:opacity-50">
+                                            {isRemoving ? '⏳ Đang xử lý...' : 'Xác nhận'}
                                         </button>
-                                        <button
-                                            onClick={() => setShowRemoveConfirm(false)}
-                                            className="btn-secondary"
-                                        >
-                                            Hủy
-                                        </button>
+                                        <button onClick={() => setShowRemoveConfirm(false)} className="btn-secondary">Hủy</button>
                                     </div>
                                 </div>
                             )}
@@ -700,18 +544,8 @@ export default function JobDetailModal({ job, onClose, userRole, onSuccess }: Jo
                     {/* Client: Cancel Job */}
                     {isClient && (job.state === 1 || job.state === 2) && (
                         <div className="space-y-3">
-                            <input
-                                type="text"
-                                value={cancelReason}
-                                onChange={(e) => setCancelReason(e.target.value)}
-                                placeholder="Lý do hủy (tùy chọn)..."
-                                className="input w-full"
-                            />
-                            <button
-                                onClick={() => cancelJob?.()}
-                                disabled={isCanceling || !cancelJob}
-                                className="bg-red-600 text-white px-4 py-2 rounded-lg w-full hover:bg-red-700 disabled:opacity-50"
-                            >
+                            <input type="text" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} placeholder="Lý do hủy..." className="input w-full" />
+                            <button onClick={() => cancelJob?.()} disabled={isCanceling || !cancelJob} className="bg-red-600 text-white px-4 py-2 rounded-lg w-full hover:bg-red-700 disabled:opacity-50">
                                 {isCanceling ? '⏳ Đang hủy...' : '❌ Hủy hợp đồng'}
                             </button>
                         </div>
